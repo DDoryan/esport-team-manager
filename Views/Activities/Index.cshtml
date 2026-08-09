@@ -43,6 +43,13 @@
                        asp-route-id="@activity.Id">
                         Modifier
                     </a>
+
+                    <a class="btn btn-outline-danger btn-sm"
+                       asp-controller="Activities"
+                       asp-action="Delete"
+                       asp-route-id="@activity.Id">
+                        Supprimer
+                    </a>
                 </td>
             </tr>
         }

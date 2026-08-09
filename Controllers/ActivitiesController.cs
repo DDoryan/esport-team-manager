@@ -118,5 +118,39 @@ namespace RepriseWeb.Controllers
 
             return RedirectToAction(nameof(Index));
         }
+
+        [HttpGet]
+        public IActionResult Delete(int id)
+        {
+            var activity = Activities.FirstOrDefault(
+                existingActivity => existingActivity.Id == id
+            );
+
+            if (activity is null)
+            {
+                return NotFound();
+            }
+
+            return View(activity);
+        }
+
+        [HttpPost]
+        [ActionName("Delete")]
+        [ValidateAntiForgeryToken]
+        public IActionResult DeleteConfirmed(int id)
+        {
+            var activity = Activities.FirstOrDefault(
+                existingActivity => existingActivity.Id == id
+            );
+
+            if (activity is null)
+            {
+                return NotFound();
+            }
+
+            Activities.Remove(activity);
+
+            return RedirectToAction(nameof(Index));
+        }
     }
 }
