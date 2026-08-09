@@ -1,156 +1,132 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RepriseWeb.Data;
 using RepriseWeb.Models;
 
-namespace RepriseWeb.Controllers
+namespace RepriseWeb.Controllers;
 
+public class ActivitiesController : Controller
 {
-    public class ActivitiesController : Controller
+    private readonly ApplicationDbContext _context;
+
+    public ActivitiesController(ApplicationDbContext context)
     {
-        private static readonly List<TeamActivity> Activities =
-        [
-            new TeamActivity
-            {
-                Id = 1,
-                Title = "Entraînement collectif",
-                Type = "Entraînement",
-                StartDate = DateTime.Today.AddHours(18)
-            },
-            new TeamActivity
-            {
-                Id = 2,
-                Title = "Review du dernier match",
-                Type = "Review",
-                StartDate = DateTime.Today.AddDays(1).AddHours(20)
-            },
-            new TeamActivity
-            {
-                Id = 3,
-                Title = "Réunion hebdomadaire",
-                Type = "Réunion",
-                StartDate = DateTime.Today.AddDays(2).AddHours(19)
-            }
-        ];
+        _context = context;
+    }
 
-        public IActionResult Index()
+    [HttpGet]
+    public async Task<IActionResult> Index()
+    {
+        var activities = await _context.TeamActivities.OrderBy(activity => activity.StartDate).ToListAsync();
+
+        return View(activities);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Details(int id)
+    {
+        var activity = await _context.TeamActivities.FindAsync(id);
+
+        if (activity is null)
         {
-            return View(Activities);
+            return NotFound();
         }
 
-        [HttpGet]
-        public IActionResult Create()
+        return View(activity);
+    }
+
+    [HttpGet]
+    public IActionResult Create()
+    {
+        return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Create(TeamActivity activity)
+    {
+        if (!ModelState.IsValid)
         {
-            return View();
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult Create(TeamActivity activity)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(activity);
-            }
-            activity.Id = Activities.Count == 0
-                ? 1
-                : Activities.Max(existingActivity => existingActivity.Id) + 1;
-
-            Activities.Add(activity);
-
-            return RedirectToAction(nameof(Index));
-        }
-
-        [HttpGet]
-        public IActionResult Details(int id)
-        {
-            var activity = Activities.FirstOrDefault(
-                existingActivity => existingActivity.Id == id
-            );
-
-            if (activity is null)
-            {
-                return NotFound();
-            }
-
             return View(activity);
         }
 
-        [HttpGet]
-        public IActionResult Edit(int id)
+        _context.TeamActivities.Add(activity);
+        await _context.SaveChangesAsync();
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id)
+    {
+        var activity = await _context.TeamActivities.FindAsync(id);
+
+        if (activity is null)
         {
-            var activity = Activities.FirstOrDefault(
-                existingActivity => existingActivity.Id == id
-            );
-
-            if (activity is null)
-            {
-                return NotFound();
-            }
-
-            return View(activity);
+            return NotFound();
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult Edit(int id, TeamActivity editedActivity)
+        return View(activity);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(int id, TeamActivity editedActivity)
+    {
+        if (id != editedActivity.Id)
         {
-            if (id != editedActivity.Id)
-            {
-                return BadRequest();
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return View(editedActivity);
-            }
-
-            var existingActivity = Activities.FirstOrDefault(
-                activity => activity.Id == id
-            );
-
-            if (existingActivity is null)
-            {
-                return NotFound();
-            }
-
-            existingActivity.Title = editedActivity.Title;
-            existingActivity.Type = editedActivity.Type;
-            existingActivity.StartDate = editedActivity.StartDate;
-
-            return RedirectToAction(nameof(Index));
+            return BadRequest();
         }
 
-        [HttpGet]
-        public IActionResult Delete(int id)
+        if (!ModelState.IsValid)
         {
-            var activity = Activities.FirstOrDefault(
-                existingActivity => existingActivity.Id == id
-            );
-
-            if (activity is null)
-            {
-                return NotFound();
-            }
-
-            return View(activity);
+            return View(editedActivity);
         }
 
-        [HttpPost]
-        [ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public IActionResult DeleteConfirmed(int id)
+        var existingActivity = await _context.TeamActivities.FindAsync(id);
+
+        if (existingActivity is null)
         {
-            var activity = Activities.FirstOrDefault(
-                existingActivity => existingActivity.Id == id
-            );
-
-            if (activity is null)
-            {
-                return NotFound();
-            }
-
-            Activities.Remove(activity);
-
-            return RedirectToAction(nameof(Index));
+            return NotFound();
         }
+
+        existingActivity.Title = editedActivity.Title;
+        existingActivity.Type = editedActivity.Type;
+        existingActivity.StartDate = editedActivity.StartDate;
+
+        await _context.SaveChangesAsync();
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var activity = await _context.TeamActivities.FindAsync(id);
+
+        if (activity is null)
+        {
+            return NotFound();
+        }
+
+        return View(activity);
+    }
+
+    [HttpPost]
+    [ActionName("Delete")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteConfirmed(int id)
+    {
+        var activity = await _context.TeamActivities.FindAsync(id);
+
+        if (activity is null)
+        {
+            return NotFound();
+        }
+
+        _context.TeamActivities.Remove(activity);
+        await _context.SaveChangesAsync();
+
+        return RedirectToAction(nameof(Index));
     }
 }
