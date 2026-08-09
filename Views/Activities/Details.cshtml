@@ -1,0 +1,26 @@
+﻿@model RepriseWeb.Models.TeamActivity
+
+@{
+    ViewData["Title"] = "Détail de l’activité";
+}
+
+<h1>Détail de l’activité</h1>
+
+<dl class="row">
+    <dt class="col-sm-3">Titre</dt>
+    <dd class="col-sm-9">@Model.Title</dd>
+
+    <dt class="col-sm-3">Type</dt>
+    <dd class="col-sm-9">@Model.Type</dd>
+
+    <dt class="col-sm-3">Date et heure</dt>
+    <dd class="col-sm-9">
+        @Model.StartDate.ToString("dd/MM/yyyy HH:mm")
+    </dd>
+</dl>
+
+<a class="btn btn-secondary"
+   asp-controller="Activities"
+   asp-action="Index">
+    Retour à la liste
+</a>

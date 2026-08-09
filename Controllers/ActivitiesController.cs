@@ -58,5 +58,20 @@ namespace RepriseWeb.Controllers
 
             return RedirectToAction(nameof(Index));
         }
+
+        [HttpGet]
+        public IActionResult Details(int id)
+        {
+            var activity = Activities.FirstOrDefault(
+                existingActivity => existingActivity.Id == id
+            );
+
+            if (activity is null)
+            {
+                return NotFound();
+            }
+
+            return View(activity);
+        }
     }
 }

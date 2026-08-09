@@ -18,6 +18,7 @@
             <th>Titre</th>
             <th>Type</th>
             <th>Date</th>
+            <th>Actions</th>
         </tr>
     </thead>
 
@@ -28,6 +29,14 @@
                 <td>@activity.Title</td>
                 <td>@activity.Type</td>
                 <td>@activity.StartDate.ToString("dd/MM/yyyy HH:mm")</td>
+                <td>
+                    <a class="btn btn-outline-primary btn-sm"
+                       asp-controller="Activities"
+                       asp-action="Details"
+                       asp-route-id="@activity.Id">
+                        Détails
+                    </a>
+                </td>
             </tr>
         }
     </tbody>
