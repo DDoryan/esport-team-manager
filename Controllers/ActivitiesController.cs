@@ -46,6 +46,10 @@ namespace RepriseWeb.Controllers
         [ValidateAntiForgeryToken]
         public IActionResult Create(TeamActivity activity)
         {
+            if (!ModelState.IsValid)
+            {
+                return View(activity);
+            }
             activity.Id = Activities.Count == 0
                 ? 1
                 : Activities.Max(existingActivity => existingActivity.Id) + 1;

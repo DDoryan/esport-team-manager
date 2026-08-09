@@ -16,6 +16,8 @@
         </label>
 
         <input asp-for="Title" class="form-control" />
+
+        <span asp-validation-for="Title" class="text-danger"></span>
     </div>
 
     <div class="mb-3">
@@ -29,6 +31,8 @@
             <option value="Review">Review</option>
             <option value="Réunion">Réunion</option>
         </select>
+
+        <span asp-validation-for="Type" class="text-danger"></span>
     </div>
 
     <div class="mb-3">
@@ -51,3 +55,7 @@
         Annuler
     </a>
 </form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
