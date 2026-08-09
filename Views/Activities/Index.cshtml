@@ -36,6 +36,13 @@
                        asp-route-id="@activity.Id">
                         Détails
                     </a>
+
+                    <a class="btn btn-outline-warning btn-sm"
+                       asp-controller="Activities"
+                       asp-action="Edit"
+                       asp-route-id="@activity.Id">
+                        Modifier
+                    </a>
                 </td>
             </tr>
         }

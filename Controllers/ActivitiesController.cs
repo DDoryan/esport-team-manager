@@ -73,5 +73,50 @@ namespace RepriseWeb.Controllers
 
             return View(activity);
         }
+
+        [HttpGet]
+        public IActionResult Edit(int id)
+        {
+            var activity = Activities.FirstOrDefault(
+                existingActivity => existingActivity.Id == id
+            );
+
+            if (activity is null)
+            {
+                return NotFound();
+            }
+
+            return View(activity);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult Edit(int id, TeamActivity editedActivity)
+        {
+            if (id != editedActivity.Id)
+            {
+                return BadRequest();
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return View(editedActivity);
+            }
+
+            var existingActivity = Activities.FirstOrDefault(
+                activity => activity.Id == id
+            );
+
+            if (existingActivity is null)
+            {
+                return NotFound();
+            }
+
+            existingActivity.Title = editedActivity.Title;
+            existingActivity.Type = editedActivity.Type;
+            existingActivity.StartDate = editedActivity.StartDate;
+
+            return RedirectToAction(nameof(Index));
+        }
     }
 }
