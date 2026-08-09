@@ -1,0 +1,34 @@
+﻿@model IEnumerable<RepriseWeb.Models.TeamActivity>
+
+@{
+    ViewData["Title"] = "Activités";
+}
+
+<h1>Activités de l’équipe</h1>
+
+<a class="btn btn-success mb-3"
+   asp-controller="Activities"
+   asp-action="Create">
+    Créer une activité
+</a>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Titre</th>
+            <th>Type</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        @foreach (var activity in Model)
+        {
+            <tr>
+                <td>@activity.Title</td>
+                <td>@activity.Type</td>
+                <td>@activity.StartDate.ToString("dd/MM/yyyy HH:mm")</td>
+            </tr>
+        }
+    </tbody>
+</table>
