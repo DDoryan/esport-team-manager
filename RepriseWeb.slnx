@@ -1,3 +1,7 @@
 <Solution>
-  <Project Path="RepriseWeb.csproj" />
+  <Project Path="EsportTeamManager.Application/EsportTeamManager.Application.csproj" />
+  <Project Path="EsportTeamManager.Domain/EsportTeamManager.Domain.csproj" />
+  <Project Path="EsportTeamManager.Infrastructure/EsportTeamManager.Infrastructure.csproj" />
+  <Project Path="EsportTeamManager.Tests/EsportTeamManager.Tests.csproj" />
+  <Project Path="EsportTeamManager.Web.csproj" />
 </Solution>

@@ -27,9 +27,19 @@ Le projet est actuellement en phase de développement du MVP.
 - Bootstrap
 - Git et GitHub
 
+## Architecture
+
+La solution utilise une architecture monolithique organisée en cinq projets :
+
+- `EsportTeamManager.Web` : interface MVC, contrôleurs et vues
+- `EsportTeamManager.Application` : services et cas d’utilisation
+- `EsportTeamManager.Domain` : entités et règles métier
+- `EsportTeamManager.Infrastructure` : base de données et services techniques
+- `EsportTeamManager.Tests` : tests automatisés
+
 ## Prérequis
 
-- Visual Studio 2022
+- Visual Studio Community 2026 version 18.0 ou supérieure
 - SDK .NET 10
 - Git for Windows
 
@@ -50,3 +60,4 @@ Les documents de conception, de gestion de projet, de tests et de veille sont co
 | Version | Date | Modification | Auteur |
 |---|---|---|---|
 | 0.1 | 14/08/2026 | Création de la structure initiale du README | Doryan Decroix |
+| 0.2 | 14/08/2026 | Passage à Visual Studio 2026 et création de l’architecture en cinq projets | Doryan Decroix |
