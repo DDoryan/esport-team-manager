@@ -1,7 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using EsportTeamManager.Domain.Enums;
+using EsportTeamManager.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using RepriseWeb.Data;
-using RepriseWeb.Models;
+using RepriseWeb.ViewModels.Activities;
 
 namespace RepriseWeb.Controllers;
 
@@ -17,116 +18,23 @@ public class ActivitiesController : Controller
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        var activities = await _context.TeamActivities.OrderBy(activity => activity.StartDate).ToListAsync();
+        List<ActivityListItemViewModel> activities = await _context.TeamActivities
+            .AsNoTracking()
+            .Where(activity => activity.Status != ActivityStatus.Cancelled)
+            .Select(activity => new ActivityListItemViewModel
+            {
+                ActivityId = activity.ActivityId,
+                TypeLabel = activity.ActivityType.Label,
+                Subtitle = activity.Subtitle,
+                PlannedStartUtc = activity.PlannedStartUtc,
+                PlannedEndUtc = activity.PlannedEndUtc,
+                TimeZoneId = activity.TimeZoneId,
+                StatusLabel = activity.Status == ActivityStatus.Planned ? "Planifiée" : activity.Status == ActivityStatus.Completed ? "Terminée" : "Annulée"
+            })
+            .ToListAsync();
+
+        activities = activities.OrderBy(activity => activity.PlannedStartUtc).ToList();
 
         return View(activities);
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Details(int id)
-    {
-        var activity = await _context.TeamActivities.FindAsync(id);
-
-        if (activity is null)
-        {
-            return NotFound();
-        }
-
-        return View(activity);
-    }
-
-    [HttpGet]
-    public IActionResult Create()
-    {
-        return View();
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(TeamActivity activity)
-    {
-        if (!ModelState.IsValid)
-        {
-            return View(activity);
-        }
-
-        _context.TeamActivities.Add(activity);
-        await _context.SaveChangesAsync();
-
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Edit(int id)
-    {
-        var activity = await _context.TeamActivities.FindAsync(id);
-
-        if (activity is null)
-        {
-            return NotFound();
-        }
-
-        return View(activity);
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(int id, TeamActivity editedActivity)
-    {
-        if (id != editedActivity.Id)
-        {
-            return BadRequest();
-        }
-
-        if (!ModelState.IsValid)
-        {
-            return View(editedActivity);
-        }
-
-        var existingActivity = await _context.TeamActivities.FindAsync(id);
-
-        if (existingActivity is null)
-        {
-            return NotFound();
-        }
-
-        existingActivity.Title = editedActivity.Title;
-        existingActivity.Type = editedActivity.Type;
-        existingActivity.StartDate = editedActivity.StartDate;
-
-        await _context.SaveChangesAsync();
-
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Delete(int id)
-    {
-        var activity = await _context.TeamActivities.FindAsync(id);
-
-        if (activity is null)
-        {
-            return NotFound();
-        }
-
-        return View(activity);
-    }
-
-    [HttpPost]
-    [ActionName("Delete")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DeleteConfirmed(int id)
-    {
-        var activity = await _context.TeamActivities.FindAsync(id);
-
-        if (activity is null)
-        {
-            return NotFound();
-        }
-
-        _context.TeamActivities.Remove(activity);
-        await _context.SaveChangesAsync();
-
-        return RedirectToAction(nameof(Index));
     }
 }
