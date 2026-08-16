@@ -101,7 +101,7 @@ namespace EsportTeamManager.Domain.Entities
             HeightPixels = heightPixels;
             OptimizedStorageKey = normalizedOptimizedStorageKey;
             ThumbnailStorageKey = normalizedThumbnailStorageKey;
-            CreatedAtUtc = createdAtUtc;
+            CreatedAtUtc = createdAtUtc.ToUniversalTime();
         }
 
         public static ImageFile CreateTeamLogo(Guid teamId, string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)

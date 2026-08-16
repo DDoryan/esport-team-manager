@@ -38,8 +38,8 @@ namespace EsportTeamManager.Domain.Entities
             TeamId = teamId;
             CreatedByMembershipId = createdByMembershipId;
             IsActive = true;
-            CreatedAtUtc = nowUtc;
-            UpdatedAtUtc = nowUtc;
+            CreatedAtUtc = nowUtc.ToUniversalTime();
+            UpdatedAtUtc = CreatedAtUtc;
 
             ChangeMap(mapId, nowUtc);
             Rename(name, nowUtc);
@@ -57,7 +57,7 @@ namespace EsportTeamManager.Domain.Entities
             }
 
             Name = normalizedName;
-            UpdatedAtUtc = nowUtc;
+            UpdatedAtUtc = nowUtc.ToUniversalTime();
         }
 
         public void ChangeMap(int mapId, DateTimeOffset nowUtc)
@@ -68,7 +68,7 @@ namespace EsportTeamManager.Domain.Entities
             }
 
             MapId = mapId;
-            UpdatedAtUtc = nowUtc;
+            UpdatedAtUtc = nowUtc.ToUniversalTime();
         }
 
         public void ChangeSide(StrategySide side, DateTimeOffset nowUtc)
@@ -79,7 +79,7 @@ namespace EsportTeamManager.Domain.Entities
             }
 
             Side = side;
-            UpdatedAtUtc = nowUtc;
+            UpdatedAtUtc = nowUtc.ToUniversalTime();
         }
 
         public void UpdateContent(string? description, string? externalUrl, DateTimeOffset nowUtc)
@@ -104,7 +104,7 @@ namespace EsportTeamManager.Domain.Entities
 
             Description = normalizedDescription;
             ExternalUrl = normalizedExternalUrl;
-            UpdatedAtUtc = nowUtc;
+            UpdatedAtUtc = nowUtc.ToUniversalTime();
         }
 
         public void EnsureHasContent(bool hasImage)
@@ -118,7 +118,7 @@ namespace EsportTeamManager.Domain.Entities
         public void SetActive(bool isActive, DateTimeOffset nowUtc)
         {
             IsActive = isActive;
-            UpdatedAtUtc = nowUtc;
+            UpdatedAtUtc = nowUtc.ToUniversalTime();
         }
 
         private static string? NormalizeOptionalText(string? value)
