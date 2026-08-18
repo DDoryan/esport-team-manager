@@ -40,3 +40,6 @@ jobs:
 
       - name: Signaler les vulnérabilités connues
         run: dotnet package list --project RepriseWeb.slnx --vulnerable --include-transitive --no-restore
+
+      - name: Provoquer un échec intentionnel
+        run: exit 1
