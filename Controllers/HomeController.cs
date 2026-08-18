@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.Models;
-using System.Diagnostics;
 
 namespace RepriseWeb.Controllers
 {
@@ -19,7 +18,9 @@ namespace RepriseWeb.Controllers
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+            Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+            return View(new ErrorViewModel(HttpContext.TraceIdentifier));
         }
     }
 }

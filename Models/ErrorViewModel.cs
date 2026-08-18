@@ -1,9 +1,14 @@
 namespace RepriseWeb.Models
 {
-    public class ErrorViewModel
+    public sealed class ErrorViewModel
     {
-        public string? RequestId { get; set; }
+        public string CorrelationId { get; }
 
-        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+        public bool ShowCorrelationId => !string.IsNullOrWhiteSpace(CorrelationId);
+
+        public ErrorViewModel(string correlationId)
+        {
+            CorrelationId = correlationId;
+        }
     }
 }
