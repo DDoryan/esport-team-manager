@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  build-test-audit:
+    name: Build, tests et audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Installer .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restaurer les dépendances
+        run: dotnet restore RepriseWeb.slnx -p:NuGetAudit=true -p:NuGetAuditMode=all
+
+      - name: Compiler la solution
+        run: dotnet build RepriseWeb.slnx --configuration Release --no-restore
+
+      - name: Exécuter les tests
+        run: dotnet test RepriseWeb.slnx --configuration Release --no-build --verbosity normal
+
+      - name: Signaler les vulnérabilités connues
+        run: dotnet package list --project RepriseWeb.slnx --vulnerable --include-transitive --no-restore
