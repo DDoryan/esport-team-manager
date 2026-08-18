@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.Middleware;
+using EsportTeamManager.Application.Emails;
+using EsportTeamManager.Infrastructure.Emails;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +51,11 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<IEmailService, DevelopmentEmailService>();
+}
 
 var app = builder.Build();
 
