@@ -20,6 +20,10 @@ public sealed class TeamRoleConfiguration : IEntityTypeConfiguration<TeamRole>
         builder.Property(teamRole => teamRole.Label).HasMaxLength(50).IsRequired();
         builder.Property(teamRole => teamRole.IsSystem).IsRequired();
 
+        builder.HasData(new { TeamRoleId = 1, Code = "Manager", Label = "Manager", IsSystem = true, TeamId = (Guid?)null });
+        builder.HasData(new { TeamRoleId = 2, Code = "Coach", Label = "Coach", IsSystem = true, TeamId = (Guid?)null });
+        builder.HasData(new { TeamRoleId = 3, Code = "Player", Label = "Joueur", IsSystem = true, TeamId = (Guid?)null });
+
         builder.HasIndex(teamRole => teamRole.Code).IsUnique().HasFilter("\"TeamId\" IS NULL").HasDatabaseName("UX_TeamRoles_SystemCode");
         builder.HasIndex(teamRole => new { teamRole.TeamId, teamRole.Code }).IsUnique().HasFilter("\"TeamId\" IS NOT NULL").HasDatabaseName("UX_TeamRoles_TeamId_Code");
 
