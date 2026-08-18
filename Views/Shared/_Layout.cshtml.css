@@ -1,48 +1,120 @@
-﻿/* Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
-for details on configuring this project to bundle and minify static web assets. */
-
-a.navbar-brand {
-  white-space: normal;
-  text-align: center;
-  word-break: break-all;
+﻿.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    border-bottom: 1px solid var(--app-border);
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(0.75rem);
 }
 
-a {
-  color: #0077cc;
+.navbar {
+    min-height: 4.25rem;
 }
 
-.btn-primary {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
+.navbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--app-text);
+    font-weight: 700;
+    white-space: nowrap;
 }
 
-.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
+    .navbar-brand:hover {
+        color: var(--app-primary-hover);
+    }
+
+.brand-mark {
+    display: inline-flex;
+    width: 2.5rem;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    border-radius: 0.625rem;
+    background: rgba(56, 189, 248, 0.14);
+    color: var(--app-primary);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
 }
 
-.border-top {
-  border-top: 1px solid #e5e5e5;
-}
-.border-bottom {
-  border-bottom: 1px solid #e5e5e5;
+.navbar-nav {
+    gap: 0.25rem;
 }
 
-.box-shadow {
-  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .05);
+.nav-link {
+    border-radius: 0.375rem;
+    color: var(--app-text-muted);
+    font-weight: 600;
 }
 
-button.accept-policy {
-  font-size: 1rem;
-  line-height: inherit;
+    .nav-link:hover,
+    .nav-link:focus {
+        background: var(--app-surface-elevated);
+        color: var(--app-text);
+    }
+
+.app-version {
+    display: inline-flex;
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    color: var(--app-text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
-.footer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  white-space: nowrap;
-  line-height: 60px;
+.app-footer {
+    border-top: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text-muted);
+}
+
+.app-footer-content {
+    display: flex;
+    min-height: 4rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.app-footer a {
+    color: var(--app-primary);
+}
+
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-top: 1px solid var(--app-border);
+    }
+
+    .app-version {
+        margin-top: 0.75rem;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .navbar-brand {
+        gap: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    .brand-mark {
+        width: 2.25rem;
+        height: 2.25rem;
+        font-size: 0.7rem;
+    }
+
+    .app-footer-content {
+        min-height: 5rem;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 0.25rem;
+    }
 }

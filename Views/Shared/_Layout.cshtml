@@ -1,47 +1,71 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="fr" data-bs-theme="dark">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - RepriseWeb</title>
+    <meta name="theme-color" content="#0f172a" />
+    <title>@ViewData["Title"] - Esport Team Manager</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/RepriseWeb.styles.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/EsportTeamManager.Web.styles.css" asp-append-version="true" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">RepriseWeb</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
+    <a class="skip-link" href="#main-content">Aller au contenu principal</a>
+
+    <header class="app-header">
+        <nav class="navbar navbar-expand-lg navbar-dark" aria-label="Navigation principale">
+            <div class="container">
+                <a class="navbar-brand" asp-area="" asp-controller="Activities" asp-action="Index">
+                    <span class="brand-mark" aria-hidden="true">ETM</span>
+                    <span>Esport Team Manager</span>
+                </a>
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-navigation" aria-controls="main-navigation" aria-expanded="false" aria-label="Afficher ou masquer la navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
+
+                <div class="collapse navbar-collapse" id="main-navigation">
+                    <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+                            <a class="nav-link" asp-area="" asp-controller="Activities" asp-action="Index">Calendrier</a>
                         </li>
                     </ul>
+
+                    <span class="app-version">MVP</span>
                 </div>
             </div>
         </nav>
     </header>
-    <div class="container">
-        <main role="main" class="pb-3">
+
+    <div class="container app-shell">
+        <main id="main-content" class="app-main" role="main" tabindex="-1">
+            @if (TempData["SuccessMessage"] is string successMessage)
+            {
+                <div class="alert alert-success" role="status">@successMessage</div>
+            }
+
+            @if (TempData["WarningMessage"] is string warningMessage)
+            {
+                <div class="alert alert-warning" role="alert">@warningMessage</div>
+            }
+
+            @if (TempData["ErrorMessage"] is string errorMessage)
+            {
+                <div class="alert alert-danger" role="alert">@errorMessage</div>
+            }
+
             @RenderBody()
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - RepriseWeb - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+    <footer class="app-footer">
+        <div class="container app-footer-content">
+            <span>&copy; 2026 Esport Team Manager</span>
+            <a asp-area="" asp-controller="Home" asp-action="Privacy">Confidentialité</a>
         </div>
     </footer>
+
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
