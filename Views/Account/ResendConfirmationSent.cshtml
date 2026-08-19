@@ -1,0 +1,25 @@
+﻿@{
+    ViewData["Title"] = "Demande prise en compte";
+}
+
+<section class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+            <div class="card border-secondary shadow-sm">
+                <div class="card-body p-4 text-center">
+                    <h1 class="h2 mb-3">Demande prise en compte</h1>
+
+                    <div class="alert alert-success" role="status">
+                        Si un compte non confirmé correspond à cette adresse électronique, un nouveau courriel de confirmation a été envoyé.
+                    </div>
+
+                    <p>
+                        Pensez à vérifier votre dossier de courriers indésirables.
+                    </p>
+
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Retour à l’accueil</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

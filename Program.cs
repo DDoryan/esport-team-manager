@@ -8,6 +8,7 @@ using RepriseWeb.Middleware;
 using EsportTeamManager.Application.Emails;
 using EsportTeamManager.Infrastructure.Emails;
 using EsportTeamManager.Application.Accounts;
+using EsportTeamManager.Web.Services.Accounts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +36,11 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromHours(24);
+});
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.Name = "__Host-EsportTeamManager.Auth";
@@ -54,6 +60,11 @@ builder.Services.AddControllersWithViews(options =>
 });
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkFactory>();
+builder.Services.AddScoped<IAccountEmailConfirmationService, AccountEmailConfirmationService>();
+builder.Services.AddScoped<IUnconfirmedAccountCleanupService, UnconfirmedAccountCleanupService>();
+builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 
 if (builder.Environment.IsDevelopment())
@@ -80,6 +91,7 @@ app.UseAuthorization();
 
 app.MapStaticAssets();
 
+app.MapControllers();
 app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
 
 app.Run();

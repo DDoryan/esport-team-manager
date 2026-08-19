@@ -1,4 +1,5 @@
 ﻿using EsportTeamManager.Domain.Entities;
+using EsportTeamManager.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -20,6 +21,9 @@ public sealed class LegalDocumentVersionConfiguration : IEntityTypeConfiguration
         builder.Property(version => version.VersionNumber).HasMaxLength(20).IsRequired();
         builder.Property(version => version.PublishedAtUtc).IsRequired();
         builder.Property(version => version.RequiresAcceptance).IsRequired();
+
+        builder.HasData(new LegalDocumentVersion(1, LegalDocumentType.TermsOfService, "1.0", new DateTimeOffset(2026, 8, 19, 0, 0, 0, TimeSpan.Zero), true),
+                        new LegalDocumentVersion(2, LegalDocumentType.PrivacyPolicy, "1.0", new DateTimeOffset(2026, 8, 19, 0, 0, 0, TimeSpan.Zero), false));
 
         builder.HasIndex(version => new { version.DocumentType, version.VersionNumber }).IsUnique().HasDatabaseName("UX_LegalDocumentVersions_DocumentType_VersionNumber");
     }

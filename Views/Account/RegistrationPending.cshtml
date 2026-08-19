@@ -17,7 +17,10 @@
                         Votre adresse électronique doit maintenant être confirmée avant que vous puissiez vous connecter.
                     </p>
 
-                    <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Retour à l’accueil</a>
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-2">
+                        <a asp-controller="Account" asp-action="ResendConfirmation" class="btn btn-primary">Renvoyer le courriel</a>
+                        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">Retour à l’accueil</a>
+                    </div>
                 </div>
             </div>
         </div>

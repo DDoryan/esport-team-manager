@@ -6,6 +6,8 @@ using EsportTeamManager.Tests.Integration.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using EsportTeamManager.Tests.TestDoubles;
+using EsportTeamManager.Domain.Entities;
 
 namespace EsportTeamManager.Tests.Integration.Identity;
 
@@ -135,6 +137,33 @@ public sealed class AccountRegistrationServiceTests
         Assert.Null(user);
     }
 
+    [Fact]
+    public async Task RegisterAsync_WhenTermsAreAccepted_StoresCurrentTermsAcceptance()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        IAccountRegistrationService registrationService = scope.ServiceProvider.GetRequiredService<IAccountRegistrationService>();
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        RegisterAccountRequest request = new("legal@example.test", "LegalPlayer", "L02", "Test1234!", true, true);
+
+        RegisterAccountResult result = await registrationService.RegisterAsync(request);
+        ApplicationUser? user = await userManager.FindByEmailAsync(request.Email);
+        LegalAcceptance? legalAcceptance = user is null ? null : await context.LegalAcceptances.AsNoTracking().SingleOrDefaultAsync(acceptance => acceptance.UserId == user.Id);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(user);
+        Assert.NotNull(legalAcceptance);
+        Assert.Equal(user.Id, legalAcceptance.UserId);
+        Assert.Equal(1, legalAcceptance.LegalDocumentVersionId);
+        Assert.NotEqual(default, legalAcceptance.AcceptedAtUtc);
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();
@@ -155,6 +184,7 @@ public sealed class AccountRegistrationServiceTests
         .AddEntityFrameworkStores<ApplicationDbContext>();
 
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<IAccountEmailConfirmationService, SuccessfulAccountEmailConfirmationService>();
         services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 
         return services.BuildServiceProvider();
