@@ -3,6 +3,7 @@ using System;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EsportTeamManager.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819125909_AddEmailConfirmationTracking")]
+    partial class AddEmailConfirmationTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -435,24 +438,6 @@ namespace EsportTeamManager.Infrastructure.Persistence.Migrations
                     b.ToTable("LegalDocumentVersions", null, t =>
                         {
                             t.HasCheckConstraint("CK_LegalDocumentVersions_DocumentType", "\"DocumentType\" IN ('TermsOfService', 'PrivacyPolicy')");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            LegalDocumentVersionId = 1,
-                            DocumentType = "TermsOfService",
-                            PublishedAtUtc = new DateTimeOffset(new DateTime(2026, 8, 19, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            RequiresAcceptance = true,
-                            VersionNumber = "1.0"
-                        },
-                        new
-                        {
-                            LegalDocumentVersionId = 2,
-                            DocumentType = "PrivacyPolicy",
-                            PublishedAtUtc = new DateTimeOffset(new DateTime(2026, 8, 19, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            RequiresAcceptance = false,
-                            VersionNumber = "1.0"
                         });
                 });
 

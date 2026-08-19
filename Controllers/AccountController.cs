@@ -8,10 +8,12 @@ namespace EsportTeamManager.Web.Controllers;
 public sealed class AccountController : Controller
 {
     private readonly IAccountRegistrationService _accountRegistrationService;
+    private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
 
-    public AccountController(IAccountRegistrationService accountRegistrationService)
+    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountEmailConfirmationService accountEmailConfirmationService)
     {
         _accountRegistrationService = accountRegistrationService;
+        _accountEmailConfirmationService = accountEmailConfirmationService;
     }
 
     [AllowAnonymous]
@@ -54,6 +56,51 @@ public sealed class AccountController : Controller
     [AllowAnonymous]
     [HttpGet]
     public IActionResult RegistrationPending()
+    {
+        return View();
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public async Task<IActionResult> ConfirmEmail(Guid userId, string token)
+    {
+        AccountEmailConfirmationResult result = await _accountEmailConfirmationService.ConfirmEmailAsync(userId, token);
+        string message = result.Succeeded ? "Votre adresse électronique a été confirmée. Vous pouvez maintenant vous connecter." : result.Errors.FirstOrDefault() ?? "Le lien de confirmation est invalide.";
+
+        return View(new ConfirmEmailViewModel(result.Succeeded, message));
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ResendConfirmation()
+    {
+        return View(new ResendConfirmationViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost]
+    public async Task<IActionResult> ResendConfirmation(ResendConfirmationViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        AccountEmailConfirmationResult result = await _accountEmailConfirmationService.ResendConfirmationEmailAsync(model.Email);
+
+        if (!result.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, "Le courriel de confirmation n’a pas pu être envoyé. Veuillez réessayer.");
+
+            return View(model);
+        }
+
+        return RedirectToAction(nameof(ResendConfirmationSent));
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ResendConfirmationSent()
     {
         return View();
     }

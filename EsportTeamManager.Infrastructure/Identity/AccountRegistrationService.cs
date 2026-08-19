@@ -1,18 +1,25 @@
 ﻿using EsportTeamManager.Application.Accounts;
+using EsportTeamManager.Domain.Entities;
+using EsportTeamManager.Domain.Enums;
 using EsportTeamManager.Domain.Exceptions;
+using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace EsportTeamManager.Infrastructure.Identity;
 
 public sealed class AccountRegistrationService : IAccountRegistrationService
 {
     private readonly UserManager<ApplicationUser> _userManager;
-
+    private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
+    private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
 
-    public AccountRegistrationService(UserManager<ApplicationUser> userManager, TimeProvider timeProvider)
+    public AccountRegistrationService(UserManager<ApplicationUser> userManager, IAccountEmailConfirmationService accountEmailConfirmationService, ApplicationDbContext context, TimeProvider timeProvider)
     {
         _userManager = userManager;
+        _accountEmailConfirmationService = accountEmailConfirmationService;
+        _context = context;
         _timeProvider = timeProvider;
     }
 
@@ -38,6 +45,13 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
             return RegisterAccountResult.Failure(validationErrors);
         }
 
+        LegalDocumentVersion? currentTermsVersion = await GetCurrentTermsVersionAsync(cancellationToken);
+
+        if (currentTermsVersion is null)
+        {
+            return RegisterAccountResult.Failure(["La version actuelle des conditions générales d’utilisation est indisponible."]);
+        }
+
         DateTimeOffset utcNow = _timeProvider.GetUtcNow();
         ApplicationUser user;
 
@@ -52,14 +66,51 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
 
         IdentityResult identityResult = await _userManager.CreateAsync(user, request.Password);
 
-        if (identityResult.Succeeded)
+        if (!identityResult.Succeeded)
         {
-            return RegisterAccountResult.Success();
+            IEnumerable<string> errors = identityResult.Errors.Select(TranslateIdentityError).Distinct();
+
+            return RegisterAccountResult.Failure(errors);
         }
 
-        IEnumerable<string> errors = identityResult.Errors.Select(TranslateIdentityError).Distinct();
+        LegalAcceptance legalAcceptance = new(user.Id, currentTermsVersion.LegalDocumentVersionId, utcNow);
 
-        return RegisterAccountResult.Failure(errors);
+        _context.LegalAcceptances.Add(legalAcceptance);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _context.Entry(legalAcceptance).State = EntityState.Detached;
+            await _userManager.DeleteAsync(user);
+
+            return RegisterAccountResult.Failure(["L’acceptation des conditions générales d’utilisation n’a pas pu être enregistrée."]);
+        }
+
+        AccountEmailConfirmationResult emailConfirmationResult = await _accountEmailConfirmationService.SendConfirmationEmailAsync(user.Id);
+
+        if (!emailConfirmationResult.Succeeded)
+        {
+            await _userManager.DeleteAsync(user);
+
+            return RegisterAccountResult.Failure(["Le courriel de confirmation n’a pas pu être envoyé. Veuillez réessayer."]);
+        }
+
+        return RegisterAccountResult.Success();
+    }
+
+    private async Task<LegalDocumentVersion?> GetCurrentTermsVersionAsync(CancellationToken cancellationToken)
+    {
+        List<LegalDocumentVersion> termsVersions = await _context.LegalDocumentVersions
+            .Where(version => version.DocumentType == LegalDocumentType.TermsOfService && version.RequiresAcceptance)
+            .ToListAsync(cancellationToken);
+
+        return termsVersions
+            .OrderByDescending(version => version.PublishedAtUtc)
+            .ThenByDescending(version => version.LegalDocumentVersionId)
+            .FirstOrDefault();
     }
 
     private static string TranslateIdentityError(IdentityError error)

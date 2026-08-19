@@ -1,0 +1,46 @@
+﻿@model IReadOnlyCollection<EsportTeamManager.Application.Emails.EmailMessage>
+
+@{
+    ViewData["Title"] = "Courriels de développement";
+}
+
+<section class="container py-4">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Courriels de développement</h1>
+            <p class="text-body-secondary mb-0">Cette page est uniquement disponible dans l’environnement de développement.</p>
+        </div>
+
+        <a asp-controller="DevelopmentEmails" asp-action="Index" class="btn btn-outline-secondary">Actualiser</a>
+    </div>
+
+    @if (Model.Count == 0)
+    {
+        <div class="alert alert-info" role="status">
+            Aucun courriel n’a encore été envoyé.
+        </div>
+    }
+    else
+    {
+        <div class="d-grid gap-3">
+            @foreach (EsportTeamManager.Application.Emails.EmailMessage email in Model)
+            {
+                <article class="card border-secondary shadow-sm">
+                    <div class="card-body">
+                        <dl class="row mb-3">
+                            <dt class="col-sm-3">Destinataire</dt>
+                            <dd class="col-sm-9">@email.Recipient</dd>
+
+                            <dt class="col-sm-3">Objet</dt>
+                            <dd class="col-sm-9">@email.Subject</dd>
+                        </dl>
+
+                        <div class="border rounded p-3">
+                            @Html.Raw(email.HtmlContent)
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>

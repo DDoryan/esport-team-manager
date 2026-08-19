@@ -1,0 +1,43 @@
+﻿@model EsportTeamManager.Web.Models.Account.ConfirmEmailViewModel
+
+@{
+    ViewData["Title"] = Model.Succeeded ? "Adresse confirmée" : "Confirmation impossible";
+}
+
+<section class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+            <div class="card border-secondary shadow-sm">
+                <div class="card-body p-4 text-center">
+                    <h1 class="h2 mb-3">@ViewData["Title"]</h1>
+
+                    @if (Model.Succeeded)
+                    {
+                        <div class="alert alert-success" role="status">
+                            @Model.Message
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @Model.Message
+                        </div>
+
+                        <p>
+                            Vous pouvez demander un nouveau courriel de confirmation.
+                        </p>
+                    }
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-2">
+                        @if (!Model.Succeeded)
+                        {
+                            <a asp-controller="Account" asp-action="ResendConfirmation" class="btn btn-primary">Renvoyer le courriel</a>
+                        }
+
+                        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">Retour à l’accueil</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

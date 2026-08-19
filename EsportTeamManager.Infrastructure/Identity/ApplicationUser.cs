@@ -22,6 +22,8 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
+    public DateTimeOffset? EmailConfirmationSentAtUtc { get; private set; }
+
     public DateTimeOffset? ConfirmedAtUtc { get; private set; }
 
     private ApplicationUser()
@@ -67,6 +69,25 @@ public sealed class ApplicationUser : IdentityUser<Guid>
         AccountStatus = AccountStatus.PendingConfirmation;
         MinimumAgeDeclaredAtUtc = minimumAgeDeclaredAtUtc.ToUniversalTime();
         CreatedAtUtc = createdAtUtc.ToUniversalTime();
+        EmailConfirmationSentAtUtc = null;
         ConfirmedAtUtc = null;
+    }
+
+    public bool CanSendConfirmationEmail(DateTimeOffset currentDateUtc)
+    {
+        DateTimeOffset normalizedCurrentDateUtc = currentDateUtc.ToUniversalTime();
+
+        return EmailConfirmationSentAtUtc is null || normalizedCurrentDateUtc >= EmailConfirmationSentAtUtc.Value.AddMinutes(1);
+    }
+
+    public void RecordConfirmationEmailSent(DateTimeOffset sentAtUtc)
+    {
+        EmailConfirmationSentAtUtc = sentAtUtc.ToUniversalTime();
+    }
+
+    public void MarkAsConfirmed(DateTimeOffset confirmedAtUtc)
+    {
+        AccountStatus = AccountStatus.Active;
+        ConfirmedAtUtc = confirmedAtUtc.ToUniversalTime();
     }
 }
