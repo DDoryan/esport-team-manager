@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.Middleware;
 using EsportTeamManager.Application.Emails;
 using EsportTeamManager.Infrastructure.Emails;
+using EsportTeamManager.Application.Accounts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +52,9 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
+
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 
 if (builder.Environment.IsDevelopment())
 {

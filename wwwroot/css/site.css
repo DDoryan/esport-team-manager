@@ -1,4 +1,5 @@
-:root {
+:root 
+{
     color-scheme: dark;
     --app-background: #070b14;
     --app-surface: #111827;
@@ -11,12 +12,14 @@
     --app-focus: #facc15;
 }
 
-html {
+html 
+{
     min-height: 100%;
     font-size: 14px;
 }
 
-body {
+body 
+{
     display: flex;
     min-height: 100vh;
     margin: 0;
@@ -25,11 +28,13 @@ body {
     color: var(--app-text);
 }
 
-a {
+a 
+{
     color: var(--app-primary);
 }
 
-    a:hover {
+    a:hover 
+    {
         color: var(--app-primary-hover);
     }
 
@@ -38,27 +43,32 @@ h2,
 h3,
 h4,
 h5,
-h6 {
+h6 
+{
     color: var(--app-text);
 }
 
-.app-shell {
+.app-shell 
+{
     display: flex;
     width: 100%;
     flex: 1;
 }
 
-.app-main {
+.app-main 
+{
     width: 100%;
     padding-top: 2rem;
     padding-bottom: 2rem;
 }
 
-    .app-main:focus {
+    .app-main:focus 
+    {
         outline: none;
     }
 
-.skip-link {
+.skip-link 
+{
     position: fixed;
     top: 0.75rem;
     left: 0.75rem;
@@ -71,7 +81,8 @@ h6 {
     transform: translateY(-200%);
 }
 
-    .skip-link:focus {
+    .skip-link:focus 
+    {
         color: #111827;
         transform: translateY(0);
     }
@@ -82,7 +93,8 @@ h6 {
 .form-control:focus-visible,
 .form-select:focus-visible,
 .form-check-input:focus-visible,
-a:focus-visible {
+a:focus-visible 
+{
     outline: 3px solid var(--app-focus);
     outline-offset: 3px;
     box-shadow: none;
@@ -91,15 +103,18 @@ a:focus-visible {
 .card,
 .table,
 .form-control,
-.form-select {
+.form-select 
+{
     border-color: var(--app-border);
 }
 
-.card {
+.card 
+{
     background: var(--app-surface);
 }
 
-.table {
+.table 
+{
     --bs-table-bg: transparent;
     --bs-table-color: var(--app-text);
     --bs-table-border-color: var(--app-border);
@@ -110,51 +125,69 @@ a:focus-visible {
 }
 
 .form-control,
-.form-select {
+.form-select 
+{
     background-color: var(--app-surface);
     color: var(--app-text);
 }
 
     .form-control:focus,
-    .form-select:focus {
+    .form-select:focus 
+    {
         border-color: var(--app-primary);
         background-color: var(--app-surface);
         color: var(--app-text);
     }
 
-    .form-control::placeholder {
+    .form-control::placeholder 
+    {
         color: var(--app-text-muted);
         opacity: 1;
     }
 
-.text-muted {
+.text-muted 
+{
     color: var(--app-text-muted) !important;
 }
 
-.alert {
+.alert 
+{
     border-width: 0 0 0 0.3rem;
 }
 
-@media (min-width: 768px) {
-    html {
+@media (min-width: 768px) 
+{
+    html 
+    {
         font-size: 16px;
     }
 }
 
-@media (max-width: 575.98px) {
-    .app-main {
+@media (max-width: 575.98px) 
+{
+    .app-main 
+    {
         padding-top: 1.25rem;
         padding-bottom: 1.25rem;
     }
 
-    .table-responsive {
+    .table-responsive 
+    {
         border: 1px solid var(--app-border);
         border-radius: 0.5rem;
     }
 }
 
-@media (min-width: 1400px) {
-    .container {
+@media (min-width: 1400px) 
+{
+    .container 
+    {
         max-width: 1600px;
     }
+}
+
+.password-field::-ms-reveal,
+.password-field::-ms-clear 
+{
+    display: none;
 }
