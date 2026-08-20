@@ -3,9 +3,11 @@ using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RepriseWeb.ViewModels.Activities;
+using Microsoft.AspNetCore.Authorization;
 
 namespace RepriseWeb.Controllers;
 
+[Authorize]
 public class ActivitiesController : Controller
 {
     private readonly ApplicationDbContext _context;

@@ -17,4 +17,8 @@
 		<ProjectReference Include="..\EsportTeamManager.Domain\EsportTeamManager.Domain.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
 </Project>
