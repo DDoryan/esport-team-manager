@@ -66,6 +66,7 @@ builder.Services.AddScoped<IAccountEmailConfirmationService, AccountEmailConfirm
 builder.Services.AddScoped<IUnconfirmedAccountCleanupService, UnconfirmedAccountCleanupService>();
 builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
+builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -92,7 +93,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapControllers();
-app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
+app.MapControllerRoute(name: "default", pattern: "{controller=Activities}/{action=Index}/{id?}").WithStaticAssets();
 
 app.Run();
 

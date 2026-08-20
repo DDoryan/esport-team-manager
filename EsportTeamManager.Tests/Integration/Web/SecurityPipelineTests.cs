@@ -15,11 +15,11 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task Home_WhenRequested_AddsCorrelationHeader()
+    public async Task Login_WhenRequested_AddsCorrelationHeader()
     {
         using HttpClient client = CreateHttpsClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/");
+        using HttpResponseMessage response = await client.GetAsync("/Account/Login");
 
         response.EnsureSuccessStatusCode();
 
@@ -79,6 +79,22 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
         using HttpResponseMessage response = await client.PostAsync("/__tests/security-validation", requestContent);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Activities_WhenUserIsAnonymous_RedirectsToLogin()
+    {
+        using HttpClient client = CreateHttpsClient();
+
+        using HttpResponseMessage response = await client.GetAsync("/Activities");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        string? redirectLocation = response.Headers.Location?.OriginalString;
+
+        Assert.NotNull(redirectLocation);
+        Assert.Contains("/Account/Login", redirectLocation);
+        Assert.Contains("ReturnUrl=%2FActivities", redirectLocation);
     }
 
     private HttpClient CreateHttpsClient()

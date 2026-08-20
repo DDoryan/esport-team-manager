@@ -1,4 +1,5 @@
 ﻿using EsportTeamManager.Application.Accounts;
+using EsportTeamManager.Infrastructure.Identity;
 using EsportTeamManager.Web.Models.Account;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,11 +9,13 @@ namespace EsportTeamManager.Web.Controllers;
 public sealed class AccountController : Controller
 {
     private readonly IAccountRegistrationService _accountRegistrationService;
+    private readonly IAccountAuthenticationService _accountAuthenticationService;
     private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
 
-    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountEmailConfirmationService accountEmailConfirmationService)
+    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService)
     {
         _accountRegistrationService = accountRegistrationService;
+        _accountAuthenticationService = accountAuthenticationService;
         _accountEmailConfirmationService = accountEmailConfirmationService;
     }
 
@@ -103,5 +106,55 @@ public sealed class AccountController : Controller
     public IActionResult ResendConfirmationSent()
     {
         return View();
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult Login(string? returnUrl = null)
+    {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToAction("Index", "Activities");
+        }
+
+        return View(new LoginViewModel
+        {
+            ReturnUrl = returnUrl
+        });
+    }
+
+    [AllowAnonymous]
+    [HttpPost]
+    public async Task<IActionResult> Login(LoginViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        LoginAccountRequest request = new(model.Email, model.Password, model.RememberMe);
+        LoginAccountResult result = await _accountAuthenticationService.LoginAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, result.ErrorMessage);
+            return View(model);
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+        {
+            return LocalRedirect(model.ReturnUrl);
+        }
+
+        return RedirectToAction("Index", "Activities");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        await _accountAuthenticationService.LogoutAsync(cancellationToken);
+
+        return RedirectToAction(nameof(Login));
     }
 }
