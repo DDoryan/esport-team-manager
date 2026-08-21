@@ -1,4 +1,12 @@
-﻿// Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
-// for details on configuring this project to bundle and minify static web assets.
+﻿const teamCreatePanel = document.getElementById("create-team");
+const teamCreateShortcut = document.querySelector(".team-create-shortcut");
 
-// Write your JavaScript code.
+if (teamCreatePanel !== null && teamCreateShortcut !== null) {
+    const teamCreatePanelObserver = new IntersectionObserver(entries => {
+        const teamCreatePanelIsVisible = entries[0].isIntersecting;
+
+        teamCreateShortcut.hidden = teamCreatePanelIsVisible;
+    }, { threshold: 0.15 });
+
+    teamCreatePanelObserver.observe(teamCreatePanel);
+}

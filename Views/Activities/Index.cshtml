@@ -1,10 +1,11 @@
 ﻿@model IReadOnlyCollection<RepriseWeb.ViewModels.Activities.ActivityListItemViewModel>
 
 @{
-    ViewData["Title"] = "Activités";
+    string teamName = ViewData["TeamName"] as string ?? "équipe";
+    ViewData["Title"] = $"Activités — {teamName}";
 }
 
-<h1>Activités de l’équipe</h1>
+<h1>Activités — @teamName</h1>
 
 @if (Model.Count == 0)
 {

@@ -191,3 +191,93 @@ a:focus-visible
 {
     display: none;
 }
+
+.team-card-link {
+    display: block;
+    height: 100%;
+    color: inherit;
+    text-decoration: none;
+}
+
+    .team-card-link:hover {
+        color: inherit;
+    }
+
+        .team-card-link:hover .team-card {
+            border-color: var(--app-primary);
+            transform: translateY(-0.2rem);
+        }
+
+.team-card {
+    min-height: 13rem;
+    transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.team-card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.team-card-mark {
+    display: inline-flex;
+    width: 3.5rem;
+    height: 3.5rem;
+    flex: 0 0 3.5rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--app-primary);
+    border-radius: 0.75rem;
+    background: var(--app-surface-elevated);
+    color: var(--app-primary);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.team-owner-badge {
+    background: #7c3aed;
+    color: #ffffff;
+}
+
+.team-card-calendar {
+    align-self: flex-end;
+    color: var(--app-primary);
+    font-weight: 700;
+}
+
+.team-create-panel {
+    max-width: 65rem;
+}
+
+.team-create-shortcut-container {
+    position: fixed;
+    right: 0;
+    bottom: 5rem;
+    left: 0;
+    z-index: 1030;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+
+.team-create-shortcut {
+    box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 35%);
+    pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .team-card {
+        transition: none;
+    }
+
+    .team-card-link:hover .team-card {
+        transform: none;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .team-create-shortcut {
+        right: 1rem;
+        bottom: 1rem;
+    }
+}
