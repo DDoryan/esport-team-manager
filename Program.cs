@@ -9,6 +9,8 @@ using EsportTeamManager.Application.Emails;
 using EsportTeamManager.Infrastructure.Emails;
 using EsportTeamManager.Application.Accounts;
 using EsportTeamManager.Web.Services.Accounts;
+using EsportTeamManager.Application.Teams;
+using EsportTeamManager.Infrastructure.Teams;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -67,6 +69,7 @@ builder.Services.AddScoped<IUnconfirmedAccountCleanupService, UnconfirmedAccount
 builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
+builder.Services.AddScoped<IUserTeamService, UserTeamService>();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -93,6 +96,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapControllers();
+app.MapControllerRoute(name: "root", pattern: "", defaults: new { controller = "Teams", action = "Entry" }).WithStaticAssets();
 app.MapControllerRoute(name: "default", pattern: "{controller=Activities}/{action=Index}/{id?}").WithStaticAssets();
 
 app.Run();

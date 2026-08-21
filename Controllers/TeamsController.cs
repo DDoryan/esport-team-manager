@@ -1,0 +1,128 @@
+﻿using System.Security.Claims;
+using EsportTeamManager.Application.Teams;
+using EsportTeamManager.Web.Models.Teams;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace EsportTeamManager.Web.Controllers;
+
+[Authorize]
+public sealed class TeamsController : Controller
+{
+    private readonly IUserTeamService _userTeamService;
+
+    public TeamsController(IUserTeamService userTeamService)
+    {
+        _userTeamService = userTeamService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Entry(CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        IReadOnlyCollection<UserTeamSummary> teams = await _userTeamService.GetTeamsForUserAsync(userId.Value, cancellationToken);
+
+        if (teams.Count == 1)
+        {
+            return RedirectToAction("Index", "Activities", new { teamId = teams.Single().TeamId });
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        TeamsIndexViewModel viewModel = await BuildIndexViewModelAsync(userId.Value, new CreateTeamViewModel(), cancellationToken);
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create(CreateTeamViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            TeamsIndexViewModel invalidViewModel = await BuildIndexViewModelAsync(userId.Value, model, cancellationToken);
+
+            return View(nameof(Index), invalidViewModel);
+        }
+
+        CreateTeamRequest request = new(userId.Value, model.Name, model.Tag, model.TimeZoneId);
+        CreateTeamResult result = await _userTeamService.CreateAsync(request, cancellationToken);
+
+        if (!result.Succeeded || !result.TeamId.HasValue)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            TeamsIndexViewModel failedViewModel = await BuildIndexViewModelAsync(userId.Value, model, cancellationToken);
+
+            return View(nameof(Index), failedViewModel);
+        }
+
+        TempData["SuccessMessage"] = "L’équipe a été créée avec succès.";
+
+        return RedirectToAction("Index", "Activities", new { teamId = result.TeamId.Value });
+    }
+
+    private async Task<TeamsIndexViewModel> BuildIndexViewModelAsync(Guid userId, CreateTeamViewModel createTeam, CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<UserTeamSummary> teams = await _userTeamService.GetTeamsForUserAsync(userId, cancellationToken);
+        IReadOnlyCollection<TeamCardViewModel> teamCards = teams
+            .Select(team => new TeamCardViewModel(team.TeamId, team.Name, team.Tag, team.RoleLabel, team.IsOwner, CreateInitials(team.Name, team.Tag)))
+            .ToArray();
+
+        return new TeamsIndexViewModel(teamCards, createTeam);
+    }
+
+    private Guid? GetCurrentUserId()
+    {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(userId, out Guid parsedUserId) ? parsedUserId : null;
+    }
+
+    private static string CreateInitials(string name, string? tag)
+    {
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            string normalizedTag = tag.Trim();
+
+            return normalizedTag[..Math.Min(2, normalizedTag.Length)].ToUpperInvariant();
+        }
+
+        string[] words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (words.Length >= 2)
+        {
+            return $"{words[0][0]}{words[1][0]}".ToUpperInvariant();
+        }
+
+        string normalizedName = name.Trim();
+
+        return normalizedName[..Math.Min(2, normalizedName.Length)].ToUpperInvariant();
+    }
+}

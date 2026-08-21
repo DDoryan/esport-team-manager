@@ -25,7 +25,7 @@ public sealed class AccountController : Controller
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Entry", "Teams");
         }
 
         return View(new RegisterViewModel());
@@ -114,7 +114,7 @@ public sealed class AccountController : Controller
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Activities");
+            return RedirectToAction("Entry", "Teams");
         }
 
         return View(new LoginViewModel
@@ -146,7 +146,7 @@ public sealed class AccountController : Controller
             return LocalRedirect(model.ReturnUrl);
         }
 
-        return RedirectToAction("Index", "Activities");
+        return RedirectToAction("Entry", "Teams");
     }
 
     [Authorize]
