@@ -6,11 +6,24 @@
 }
 
 <section class="team-calendar-page" aria-labelledby="calendar-title">
-    <header class="mb-4">
-        <h1 id="calendar-title" class="mb-2">Calendrier — @Model.TeamName</h1>
-        <p class="text-body-secondary mb-0">
-            Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
-        </p>
+    <header class="team-calendar-header mb-4">
+        <div>
+            <h1 id="calendar-title" class="mb-2">Calendrier — @Model.TeamName</h1>
+            <p class="text-body-secondary mb-0">
+                Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
+            </p>
+        </div>
+
+        @if (Model.CanCreateActivity)
+        {
+            <a class="btn btn-primary team-calendar-create-button"
+               asp-controller="Activities"
+               asp-action="Create"
+               asp-route-teamId="@Model.TeamId">
+                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
+                Créer une activité
+            </a>
+        }
     </header>
 
     <p id="calendar-scroll-help" class="visually-hidden">

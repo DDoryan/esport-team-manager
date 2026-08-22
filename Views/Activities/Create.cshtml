@@ -1,0 +1,243 @@
+﻿@model RepriseWeb.ViewModels.Activities.CreateActivityViewModel
+
+@{
+    ViewData["Title"] = $"Créer une activité — {Model.TeamName}";
+    string? selectedActivityTypeCode = Model.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == Model.ActivityTypeId)?.Code;
+    bool opponentFieldIsVisible = selectedActivityTypeCode is "Pracc" or "OfficialMatch";
+}
+
+<section class="activity-create-page" aria-labelledby="activity-create-title">
+    <header class="mb-4">
+        <h1 id="activity-create-title" class="mb-2">Créer une activité</h1>
+        <p class="text-body-secondary mb-0">
+            Aucun titre : le type constitue le titre principal.
+        </p>
+    </header>
+
+    <form id="activity-create-form" asp-controller="Activities" asp-action="Create" method="post">
+        <input asp-for="TeamId" type="hidden" />
+
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="row g-4">
+            <div class="col-12 col-lg-7">
+                <section class="card activity-create-panel h-100" aria-labelledby="activity-information-title">
+                    <div class="card-body p-4">
+                        <h2 id="activity-information-title" class="h4 mb-4">Informations principales</h2>
+
+                        <div class="row g-3">
+                            <div class="col-12 col-md-5">
+                                <label asp-for="ActivityTypeId" class="form-label"></label>
+                                <select asp-for="ActivityTypeId" class="form-select">
+                                    <option value="">Sélectionner un type</option>
+
+                                    @foreach (var activityType in Model.ActivityTypes)
+                                    {
+                                        <option value="@activityType.ActivityTypeId" data-activity-code="@activityType.Code">@activityType.Label</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="ActivityTypeId" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12 col-md-7">
+                                <label asp-for="Subtitle" class="form-label"></label>
+                                <input asp-for="Subtitle" class="form-control" maxlength="100" placeholder="Facultatif · 100 caractères maximum" />
+                                <span asp-validation-for="Subtitle" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label asp-for="PlannedStartLocal" class="form-label"></label>
+                                <input asp-for="PlannedStartLocal" asp-format="{0:yyyy-MM-ddTHH:mm}" class="form-control" type="datetime-local" />
+                                <span asp-validation-for="PlannedStartLocal" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label asp-for="PlannedEndLocal" class="form-label"></label>
+                                <input asp-for="PlannedEndLocal" asp-format="{0:yyyy-MM-ddTHH:mm}" class="form-control" type="datetime-local" />
+                                <span asp-validation-for="PlannedEndLocal" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <p id="activity-time-zone"
+                                   class="activity-time-zone mb-0"
+                                   data-time-zone="@Model.TimeZoneId">
+                                    Fuseau appliqué : <strong>@Model.TimeZoneId</strong>
+                                    <span id="activity-time-zone-offset"></span>
+                                </p>
+                            </div>
+
+                            <div class="col-12">
+                                <label asp-for="Description" class="form-label"></label>
+                                <textarea asp-for="Description" class="form-control" rows="6" maxlength="2000" placeholder="Facultatif · texte brut multiligne"></textarea>
+                                <span asp-validation-for="Description" class="text-danger"></span>
+                            </div>
+                            <div id="activity-opponent-field"
+                                 class="col-12 col-md-6"
+                                 hidden="@(!opponentFieldIsVisible)">
+                                <label asp-for="OpponentName" class="form-label"></label>
+                                <input asp-for="OpponentName"
+                                       id="activity-opponent-name"
+                                       class="form-control"
+                                       maxlength="100"
+                                       placeholder="Facultatif"
+                                       disabled="@(!opponentFieldIsVisible)" />
+                                <span asp-validation-for="OpponentName" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                                    <h3 class="h5 mb-0">Liens</h3>
+
+                                    <button id="activity-add-link" class="btn btn-outline-secondary btn-sm" type="button">
+                                        <span aria-hidden="true">+</span> Ajouter un lien
+                                    </button>
+                                </div>
+
+                                <div id="activity-link-list" class="activity-link-list">
+                                    @for (int index = 0; index < Model.Links.Count; index++)
+                                    {
+                                        <div class="activity-link-item" data-activity-link-row data-link-index="@index">
+                                            <input type="hidden" name="Links.Index" value="@index" />
+
+                                            <div class="row g-3 align-items-start">
+                                                <div class="col-12 col-md-4">
+                                                    <label asp-for="Links[index].Name" class="form-label"></label>
+                                                    <input asp-for="Links[index].Name" class="form-control" maxlength="100" />
+                                                    <span asp-validation-for="Links[index].Name" class="text-danger"></span>
+                                                </div>
+
+                                                <div class="col-12 col-md">
+                                                    <label asp-for="Links[index].Url" class="form-label"></label>
+                                                    <input asp-for="Links[index].Url" class="form-control" type="url" maxlength="2048" />
+                                                    <span asp-validation-for="Links[index].Url" class="text-danger"></span>
+                                                </div>
+
+                                                <div class="col-12 col-md-auto activity-link-remove-column">
+                                                    <button class="btn btn-outline-danger btn-sm"
+                                                            type="button"
+                                                            data-remove-activity-link
+                                                            aria-label="Supprimer ce lien">
+                                                        Supprimer
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+
+                                <template id="activity-link-template">
+                                    <div class="activity-link-item" data-activity-link-row>
+                                        <input type="hidden" name="Links.Index" data-link-index-field />
+
+                                        <div class="row g-3 align-items-start">
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label" data-link-name-label>Nom du lien</label>
+                                                <input class="form-control"
+                                                       type="text"
+                                                       maxlength="100"
+                                                       data-link-name-input
+                                                       data-val="true"
+                                                       data-val-required="Le nom du lien est obligatoire."
+                                                       data-val-length="Le nom du lien ne peut pas dépasser 100 caractères."
+                                                       data-val-length-max="100" />
+                                                <span class="text-danger field-validation-valid"
+                                                      data-link-name-validation
+                                                      data-valmsg-replace="true"></span>
+                                            </div>
+
+                                            <div class="col-12 col-md">
+                                                <label class="form-label" data-link-url-label>URL</label>
+                                                <input class="form-control"
+                                                       type="url"
+                                                       maxlength="2048"
+                                                       data-link-url-input
+                                                       data-val="true"
+                                                       data-val-required="L’URL du lien est obligatoire."
+                                                       data-val-length="L’URL du lien ne peut pas dépasser 2 048 caractères."
+                                                       data-val-length-max="2048"
+                                                       data-val-regex="L’URL doit utiliser le protocole HTTP ou HTTPS."
+                                                       data-val-regex-pattern="^https?://.+$" />
+                                                <span class="text-danger field-validation-valid"
+                                                      data-link-url-validation
+                                                      data-valmsg-replace="true"></span>
+                                            </div>
+
+                                            <div class="col-12 col-md-auto activity-link-remove-column">
+                                                <button class="btn btn-outline-danger btn-sm"
+                                                        type="button"
+                                                        data-remove-activity-link
+                                                        aria-label="Supprimer ce lien">
+                                                    Supprimer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-12 col-lg-5">
+                <section class="card activity-create-panel h-100" aria-labelledby="activity-participants-title">
+                    <div class="card-body p-4">
+                        <h2 id="activity-participants-title" class="h4 mb-3">Participants <span aria-hidden="true">*</span></h2>
+
+                        <div class="form-check activity-select-all mb-3">
+                            <input id="activity-select-all" class="form-check-input" type="checkbox" />
+                            <label class="form-check-label" for="activity-select-all">Appliquer à tous</label>
+                        </div>
+
+                        <span asp-validation-for="ParticipantMembershipIds" class="text-danger d-block mb-3"></span>
+
+                        <div class="activity-participant-list">
+                            @foreach (var participant in Model.Participants)
+                            {
+                                bool isSelected = Model.ParticipantMembershipIds.Contains(participant.TeamMembershipId);
+
+                                <div class="activity-participant-item">
+                                    <div class="form-check">
+                                        <input id="participant-@participant.TeamMembershipId"
+                                               class="form-check-input activity-participant-checkbox"
+                                               type="checkbox"
+                                               name="ParticipantMembershipIds"
+                                               value="@participant.TeamMembershipId"
+                                               checked="@isSelected" />
+
+                                        <label class="form-check-label" for="participant-@participant.TeamMembershipId">
+                                            <span class="activity-participant-identity">@participant.Pseudo #@participant.Tag</span>
+                                            <span class="text-body-secondary"> · @participant.RoleLabel</span>
+
+                                            @if (participant.IsOwner)
+                                            {
+                                                <span class="badge team-owner-badge ms-2">Propriétaire</span>
+                                            }
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-4">
+            <a class="btn btn-outline-secondary"
+               asp-controller="Activities"
+               asp-action="Index"
+               asp-route-teamId="@Model.TeamId">
+                Annuler
+            </a>
+
+            <button class="btn btn-primary" type="submit">Créer</button>
+        </div>
+    </form>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/activities-create.js" asp-append-version="true"></script>
+}

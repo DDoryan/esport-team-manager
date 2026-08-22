@@ -8,10 +8,13 @@ public sealed class TeamCalendarViewModel
 
     public string TimeZoneId { get; }
 
-    public TeamCalendarViewModel(Guid teamId, string teamName, string timeZoneId)
+    public bool CanCreateActivity { get; }
+
+    public TeamCalendarViewModel(Guid teamId, string teamName, string timeZoneId, bool canCreateActivity)
     {
         TeamId = teamId;
         TeamName = teamName;
         TimeZoneId = timeZoneId;
+        CanCreateActivity = canCreateActivity;
     }
 }
