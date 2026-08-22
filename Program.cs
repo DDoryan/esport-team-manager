@@ -74,6 +74,7 @@ builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationServi
 builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
 builder.Services.AddScoped<IUserTeamService, UserTeamService>();
 builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
+builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 
 if (builder.Environment.IsDevelopment())
 {

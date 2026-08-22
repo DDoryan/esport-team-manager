@@ -40,8 +40,10 @@ public sealed class ActivityCalendarService : IActivityCalendarService
             .ThenBy(activity => activity.PlannedEndUtc)
             .Select(activity => new CalendarActivitySummary(
                 activity.ActivityId,
+                activity.ActivityType.Code,
                 activity.ActivityType.Label,
                 activity.Subtitle,
+                activity.MatchDetail == null ? null : activity.MatchDetail.OpponentName,
                 activity.PlannedStartUtc,
                 activity.PlannedEndUtc,
                 activity.TimeZoneId,

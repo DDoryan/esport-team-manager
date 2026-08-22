@@ -309,6 +309,19 @@ a:focus-visible
     flex-direction: column;
 }
 
+.team-calendar-header
+{
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    justify-content: space-between;
+}
+
+.team-calendar-create-button
+{
+    flex: 0 0 auto;
+}
+
 .team-calendar-frame 
 {
     display: flex;
@@ -609,7 +622,7 @@ a:focus-visible
 
 .calendar-selected-day-lane
 {
-    background-color: rgb(56 189 248 / 8%) !important;
+    background-color: transparent !important;
     box-shadow: inset 0 0 0 2px var(--app-primary);
 }
 
@@ -684,8 +697,193 @@ a:focus-visible
     color: var(--app-background) !important;
 }
 
+#team-calendar .calendar-activity-event
+{
+    --calendar-activity-color: var(--app-primary);
+    --calendar-activity-background: rgb(56 189 248 / 10%);
+
+    overflow: hidden;
+    border: 1px solid var(--calendar-activity-color) !important;
+    border-radius: 0.35rem !important;
+    background-color: var(--calendar-activity-background) !important;
+    color: var(--calendar-activity-color) !important;
+    box-shadow: none !important;
+}
+
+#team-calendar .calendar-activity-event > *,
+#team-calendar .calendar-activity-event > * > *
+{
+    background-color: transparent !important;
+    color: inherit !important;
+}
+
+#team-calendar .calendar-activity-event-pracc
+{
+    --calendar-activity-color: #22d3ee;
+    --calendar-activity-background: rgb(34 211 238 / 12%);
+}
+
+#team-calendar .calendar-activity-event-official-match
+{
+    --calendar-activity-color: #a78bfa;
+    --calendar-activity-background: rgb(167 139 250 / 12%);
+}
+
+#team-calendar .calendar-activity-event-meeting
+{
+    --calendar-activity-color: #f59e0b;
+    --calendar-activity-background: rgb(245 158 11 / 12%);
+}
+
+#team-calendar .calendar-activity-event-vod-review
+{
+    --calendar-activity-color: #60a5fa;
+    --calendar-activity-background: rgb(96 165 250 / 12%);
+}
+
+#team-calendar .calendar-activity-event-default
+{
+    --calendar-activity-color: var(--app-primary);
+    --calendar-activity-background: rgb(56 189 248 / 10%);
+}
+
+.calendar-event-popover .calendar-activity-event
+{
+    overflow: hidden;
+    margin: 0.1rem 0 !important;
+    padding: 0.15rem 0.35rem !important;
+    border: 1px solid var(--calendar-activity-color) !important;
+    border-radius: 0.35rem !important;
+    background-color: var(--calendar-activity-background) !important;
+    color: var(--calendar-activity-color) !important;
+    box-shadow: none !important;
+}
+
+.calendar-event-popover .calendar-activity-event > *,
+.calendar-event-popover .calendar-activity-event > * > *
+{
+    background-color: transparent !important;
+    color: inherit !important;
+}
+
+.calendar-event-popover .calendar-activity-event-pracc
+{
+    --calendar-activity-color: #22d3ee;
+    --calendar-activity-background: rgb(34 211 238 / 12%);
+}
+
+.calendar-event-popover .calendar-activity-event-official-match
+{
+    --calendar-activity-color: #a78bfa;
+    --calendar-activity-background: rgb(167 139 250 / 12%);
+}
+
+.calendar-event-popover .calendar-activity-event-meeting
+{
+    --calendar-activity-color: #f59e0b;
+    --calendar-activity-background: rgb(245 158 11 / 12%);
+}
+
+.calendar-event-popover .calendar-activity-event-vod-review
+{
+    --calendar-activity-color: #60a5fa;
+    --calendar-activity-background: rgb(96 165 250 / 12%);
+}
+
+.calendar-event-popover .calendar-activity-event-default
+{
+    --calendar-activity-color: var(--app-primary);
+    --calendar-activity-background: rgb(56 189 248 / 10%);
+}
+
+#team-calendar .calendar-four-week-view .calendar-activity-event
+{
+    margin: 0.1rem 0.2rem !important;
+    padding: 0.15rem 0.35rem !important;
+}
+
+#team-calendar .calendar-week-view .calendar-activity-event
+{
+    width: auto !important;
+    margin-right: 0.2rem !important;
+    margin-left: 0.2rem !important;
+    padding: 0.25rem 0.35rem !important;
+    box-sizing: border-box;
+}
+
+.calendar-activity-event-content
+{
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    gap: 0.3rem;
+    align-items: flex-start;
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.75rem;
+    line-height: 1.25;
+}
+
+.calendar-activity-event-time
+{
+    flex: 0 0 auto;
+    font-weight: 700;
+}
+
+.calendar-activity-event-label
+{
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#team-calendar .calendar-week-view .calendar-activity-event-label
+{
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.calendar-activity-event-status
+{
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-weight: 700;
+}
+
+#team-calendar .calendar-activity-event-completed
+{
+    opacity: 0.8;
+}
+
+#team-calendar .calendar-activity-event-cancelled
+{
+    border-style: dashed !important;
+    opacity: 0.7;
+}
+
+#team-calendar .calendar-activity-event-cancelled .calendar-activity-event-label
+{
+    text-decoration: line-through;
+}
+
 @media (max-width: 575.98px)
 {
+    .team-calendar-header
+    {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .team-calendar-create-button
+    {
+        width: 100%;
+    }
+
     .team-calendar-frame
     {
         padding: 0.5rem;

@@ -6,23 +6,29 @@ public sealed class ActivityCalendarEventViewModel
 
     public string Title { get; }
 
+    public string TypeCode { get; }
+
+    public string? Subtitle { get; }
+
+    public string? OpponentName { get; }
+
     public DateTimeOffset Start { get; }
 
     public DateTimeOffset End { get; }
-
-    public string? Subtitle { get; }
 
     public string TimeZoneId { get; }
 
     public string Status { get; }
 
-    public ActivityCalendarEventViewModel(Guid id, string title, DateTimeOffset start, DateTimeOffset end, string? subtitle, string timeZoneId, string status)
+    public ActivityCalendarEventViewModel(Guid id, string title, string typeCode, string? subtitle, string? opponentName, DateTimeOffset start, DateTimeOffset end, string timeZoneId, string status)
     {
         Id = id;
         Title = title;
+        TypeCode = typeCode;
+        Subtitle = subtitle;
+        OpponentName = opponentName;
         Start = start;
         End = end;
-        Subtitle = subtitle;
         TimeZoneId = timeZoneId;
         Status = status;
     }

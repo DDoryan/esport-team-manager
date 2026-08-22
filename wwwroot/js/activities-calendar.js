@@ -190,6 +190,142 @@ function alignDatePickerWithButton(calendarElement, datePickerElement)
     datePickerElement.style.height = `${buttonRectangle.height}px`;
 }
 
+function getCalendarActivityTypeClass(typeCode)
+{
+    switch (typeCode)
+    {
+        case "Pracc":
+            return "calendar-activity-event-pracc";
+
+        case "OfficialMatch":
+            return "calendar-activity-event-official-match";
+
+        case "Meeting":
+            return "calendar-activity-event-meeting";
+
+        case "VodReview":
+            return "calendar-activity-event-vod-review";
+
+        default:
+            return "calendar-activity-event-default";
+    }
+}
+
+function getCalendarActivityComplement(event)
+{
+    const opponentName = typeof event.extendedProps.opponentName === "string" ? event.extendedProps.opponentName.trim() : "";
+    const subtitle = typeof event.extendedProps.subtitle === "string" ? event.extendedProps.subtitle.trim() : "";
+    const details = [];
+
+    if (subtitle.length > 0)
+    {
+        details.push(subtitle);
+    }
+
+    if (opponentName.length > 0)
+    {
+        details.push(opponentName);
+    }
+
+    return details.join(" · ");
+}
+
+function getCalendarActivityStatusLabel(status)
+{
+    switch (status)
+    {
+        case "Completed":
+            return "Terminée";
+
+        case "Cancelled":
+            return "Annulée";
+
+        default:
+            return "Planifiée";
+    }
+}
+
+function createCalendarActivityEventContent(info)
+{
+    const contentElement = document.createElement("span");
+    const labelElement = document.createElement("span");
+    const typeCode = typeof info.event.extendedProps.typeCode === "string" ? info.event.extendedProps.typeCode : "";
+    const complement = getCalendarActivityComplement(info.event);
+    const status = typeof info.event.extendedProps.status === "string" ? info.event.extendedProps.status : "";
+    const label = complement.length > 0 ? `${info.event.title} · ${complement}` : info.event.title;
+
+    contentElement.className = "calendar-activity-event-content";
+    contentElement.classList.add(getCalendarActivityTypeClass(typeCode));
+
+    if (info.view.type === "dayGridFourWeek" && info.timeText.length > 0)
+    {
+        const timeElement = document.createElement("span");
+
+        timeElement.className = "calendar-activity-event-time";
+        timeElement.textContent = info.timeText;
+
+        contentElement.append(timeElement);
+    }
+
+    labelElement.className = "calendar-activity-event-label";
+    labelElement.textContent = label;
+
+    contentElement.append(labelElement);
+
+    if (status === "Completed")
+    {
+        const statusElement = document.createElement("span");
+
+        statusElement.className = "calendar-activity-event-status";
+        statusElement.textContent = "✓";
+        statusElement.setAttribute("aria-label", "Terminée");
+
+        contentElement.append(statusElement);
+    }
+
+    if (status === "Cancelled")
+    {
+        const statusElement = document.createElement("span");
+
+        statusElement.className = "calendar-activity-event-status";
+        statusElement.textContent = "Annulée";
+
+        contentElement.append(statusElement);
+    }
+
+    return { domNodes: [contentElement] };
+}
+
+function configureCalendarActivityEvent(info) {
+    const typeCode = typeof info.event.extendedProps.typeCode === "string" ? info.event.extendedProps.typeCode : "";
+    const complement = getCalendarActivityComplement(info.event);
+    const status = typeof info.event.extendedProps.status === "string" ? info.event.extendedProps.status : "";
+    const activityLabel = complement.length > 0 ? `${info.event.title} · ${complement}` : info.event.title;
+    const accessibleParts = [];
+
+    info.el.classList.add(getCalendarActivityTypeClass(typeCode));
+
+    if (status === "Completed") {
+        info.el.classList.add("calendar-activity-event-completed");
+    }
+
+    if (status === "Cancelled") {
+        info.el.classList.add("calendar-activity-event-cancelled");
+    }
+
+    if (info.timeText.length > 0) {
+        accessibleParts.push(info.timeText);
+    }
+
+    accessibleParts.push(activityLabel);
+    accessibleParts.push(getCalendarActivityStatusLabel(status));
+
+    const accessibleLabel = accessibleParts.join(" — ");
+
+    info.el.title = accessibleLabel;
+    info.el.setAttribute("aria-label", accessibleLabel);
+}
+
 document.addEventListener("DOMContentLoaded", () =>
 {
     const calendarElement = document.getElementById("team-calendar");
@@ -239,6 +375,11 @@ document.addEventListener("DOMContentLoaded", () =>
         expandRows: true,
         dayMaxEvents: true,
         displayEventEnd: false,
+        eventDisplay: "block",
+        eventClass: "calendar-activity-event",
+        popoverClass: "calendar-event-popover",
+        eventContent: createCalendarActivityEventContent,
+        eventDidMount: configureCalendarActivityEvent,
         dayCellClass: info =>
         {
             return getDayCellClass(info, calendar.getDate(), teamTimeZone);
@@ -347,6 +488,7 @@ document.addEventListener("DOMContentLoaded", () =>
             timeGridWeek:
             {
                 className: "calendar-week-view",
+                slotEventOverlap: false,
                 slotDuration: "01:00:00",
                 slotHeaderInterval: "01:00:00",
                 slotHeaderFormat:
