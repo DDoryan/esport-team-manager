@@ -26,23 +26,44 @@
         }
     </header>
 
-    <p id="calendar-scroll-help" class="visually-hidden">
-        Sur un petit écran, le calendrier peut défiler horizontalement.
-    </p>
+    <div class="team-calendar-desktop">
+        <p id="calendar-scroll-help" class="visually-hidden">
+            Le calendrier peut défiler horizontalement lorsque son contenu dépasse la largeur disponible.
+        </p>
 
-    <div class="team-calendar-frame" tabindex="0" aria-describedby="calendar-scroll-help">
-        <div id="team-calendar"
-             data-events-url="@eventsUrl"
-             data-team-time-zone="@Model.TimeZoneId"
-             aria-label="Calendrier de l’équipe @Model.TeamName">
+        <div class="team-calendar-frame" tabindex="0" aria-describedby="calendar-scroll-help">
+            <div id="team-calendar"
+                 data-events-url="@eventsUrl"
+                 data-team-time-zone="@Model.TimeZoneId"
+                 aria-label="Calendrier de l’équipe @Model.TeamName">
+            </div>
         </div>
+
+        <input id="calendar-date-picker"
+               class="calendar-date-picker"
+               type="date"
+               tabindex="-1"
+               aria-label="Sélectionner une date du calendrier" />
     </div>
 
-    <input id="calendar-date-picker"
-           class="calendar-date-picker"
-           type="date"
-           tabindex="-1"
-           aria-label="Sélectionner une date du calendrier" />
+    <section id="team-activity-list"
+             class="team-activity-list"
+             aria-labelledby="team-activity-list-title"
+             aria-busy="true">
+        <h2 id="team-activity-list-title" class="visually-hidden">
+            Activités des quatre semaines affichées
+        </h2>
+
+        <p class="team-activity-list-loading text-body-secondary mb-0" role="status">
+            Chargement des activités…
+        </p>
+
+        <ol class="team-activity-list-items list-unstyled mb-0"></ol>
+
+        <p class="team-activity-list-empty text-body-secondary mb-0" role="status" hidden>
+            Aucune activité planifiée ou terminée pendant ces quatre semaines.
+        </p>
+    </section>
 
     <div id="calendar-load-error" class="alert alert-danger mt-3" role="alert" hidden>
         Le calendrier n’a pas pu être chargé. Veuillez actualiser la page.

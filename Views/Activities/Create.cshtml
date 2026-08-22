@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = $"Créer une activité — {Model.TeamName}";
+    ViewData["HtmlClass"] = "app-local-scroll-page";
     string? selectedActivityTypeCode = Model.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == Model.ActivityTypeId)?.Code;
     bool opponentFieldIsVisible = selectedActivityTypeCode is "Pracc" or "OfficialMatch";
 }
@@ -93,7 +94,7 @@
                                     </button>
                                 </div>
 
-                                <div id="activity-link-list" class="activity-link-list">
+                                <div id="activity-link-list" class="activity-link-list app-scroll-region" tabindex="0" aria-label="Liens de l’activité">
                                     @for (int index = 0; index < Model.Links.Count; index++)
                                     {
                                         <div class="activity-link-item" data-activity-link-row data-link-index="@index">

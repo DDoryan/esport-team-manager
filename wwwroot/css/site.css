@@ -10,6 +10,69 @@
     --app-primary: #38bdf8;
     --app-primary-hover: #7dd3fc;
     --app-focus: #facc15;
+    --app-navigation-muted: #526176;
+    --app-navigation-muted-hover: #526176;
+}
+
+.app-header .navbar-text
+{
+    color: var(--app-navigation-muted);
+}
+
+html.app-local-scroll-page
+{
+    scrollbar-width: none;
+}
+
+html.app-local-scroll-page::-webkit-scrollbar
+{
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.app-scroll-region::-webkit-scrollbar
+{
+    width: 0.75rem;
+    height: 0.75rem;
+}
+
+.app-scroll-region::-webkit-scrollbar-button
+{
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.app-scroll-region::-webkit-scrollbar-track
+{
+    background: var(--app-surface);
+}
+
+.app-scroll-region::-webkit-scrollbar-thumb
+{
+    border: 2px solid var(--app-surface);
+    border-radius: 999px;
+    background: var(--app-navigation-muted);
+}
+
+.app-scroll-region::-webkit-scrollbar-thumb:hover
+{
+    background: var(--app-navigation-muted-hover);
+}
+
+.app-scroll-region::-webkit-scrollbar-corner
+{
+    background: var(--app-surface);
+}
+
+@supports (-moz-appearance: none)
+{
+    .app-scroll-region
+    {
+        scrollbar-width: thin;
+        scrollbar-color: var(--app-navigation-muted) var(--app-surface);
+    }
 }
 
 html 
@@ -255,6 +318,88 @@ a:focus-visible
     font-weight: 700;
 }
 
+.team-list-scroll
+{
+    max-height: 30rem;
+    min-height: 0;
+    padding: 0 0.5rem 0 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.team-list-grid
+{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px)
+{
+    .team-list-grid
+    {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1200px)
+{
+    .team-list-grid
+    {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 992px)
+{
+    html.teams-fixed-page,
+    html.teams-fixed-page body
+    {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    html.teams-fixed-page .app-shell
+    {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    html.teams-fixed-page .app-main
+    {
+        display: flex;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .teams-index-page
+    {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+    }
+
+    .teams-index-header,
+    .teams-index-page > .team-create-panel
+    {
+        flex: 0 0 auto;
+    }
+
+    .teams-index-page > .team-list-scroll
+    {
+        flex: 1 1 30rem;
+    }
+}
+
+.activity-link-list
+{
+    max-height: 20rem;
+    padding-right: 0.5rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
 .team-create-panel 
 {
     max-width: 65rem;
@@ -320,6 +465,15 @@ a:focus-visible
 .team-calendar-create-button
 {
     flex: 0 0 auto;
+}
+
+.team-calendar-desktop
+{
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
 }
 
 .team-calendar-frame 
@@ -871,8 +1025,106 @@ a:focus-visible
     text-decoration: line-through;
 }
 
+.team-activity-list
+{
+    display: none;
+}
+
+.team-activity-list-items
+{
+    display: grid;
+    gap: 0.75rem;
+}
+
+.team-activity-list-item
+{
+    --calendar-activity-color: var(--app-primary);
+    --calendar-activity-background: rgb(56 189 248 / 10%);
+
+    display: flex;
+    padding: 0.9rem;
+    border: 1px solid var(--calendar-activity-color);
+    border-radius: 0.5rem;
+    background: var(--calendar-activity-background);
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.team-activity-list-item.calendar-activity-event-pracc
+{
+    --calendar-activity-color: #22d3ee;
+    --calendar-activity-background: rgb(34 211 238 / 12%);
+}
+
+.team-activity-list-item.calendar-activity-event-official-match
+{
+    --calendar-activity-color: #a78bfa;
+    --calendar-activity-background: rgb(167 139 250 / 12%);
+}
+
+.team-activity-list-item.calendar-activity-event-meeting
+{
+    --calendar-activity-color: #f59e0b;
+    --calendar-activity-background: rgb(245 158 11 / 12%);
+}
+
+.team-activity-list-item.calendar-activity-event-vod-review
+{
+    --calendar-activity-color: #60a5fa;
+    --calendar-activity-background: rgb(96 165 250 / 12%);
+}
+
+.team-activity-list-item-title
+{
+    margin: 0;
+    color: var(--calendar-activity-color);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.team-activity-list-item-schedule,
+.team-activity-list-item-details
+{
+    margin: 0;
+    color: var(--app-text-muted);
+    font-size: 0.875rem;
+}
+
+.team-activity-list-item-status
+{
+    margin-left: auto;
+    color: var(--calendar-activity-color);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.team-activity-list-item.calendar-activity-event-completed
+{
+    opacity: 0.85;
+}
+
+.team-activity-list-item.calendar-activity-event-cancelled
+{
+    border-style: dashed;
+    opacity: 0.7;
+}
+
+.team-activity-list-item.calendar-activity-event-cancelled .team-activity-list-item-title
+{
+    text-decoration: line-through;
+}
+
 @media (max-width: 575.98px)
 {
+    .team-calendar-desktop
+    {
+        display: none;
+    }
+
+    .team-activity-list
+    {
+        display: block;
+    }
     .team-calendar-header
     {
         flex-direction: column;
