@@ -1,11 +1,14 @@
 ﻿using EsportTeamManager.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace EsportTeamManager.Infrastructure.Persistence.Configurations;
 
 public sealed class TeamActivityConfiguration : IEntityTypeConfiguration<TeamActivity>
 {
+    private static readonly ValueConverter<DateTimeOffset, DateTime> UtcDateTimeConverter = new(dateTime => dateTime.UtcDateTime, dateTime => new DateTimeOffset(DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)));
+
     public void Configure(EntityTypeBuilder<TeamActivity> builder)
     {
         builder.ToTable("Activities", tableBuilder =>
@@ -22,13 +25,13 @@ public sealed class TeamActivityConfiguration : IEntityTypeConfiguration<TeamAct
         builder.Property(activity => activity.Subtitle).HasMaxLength(100);
         builder.Property(activity => activity.Description).HasMaxLength(2000);
         builder.Property(activity => activity.Report).HasMaxLength(5000);
-        builder.Property(activity => activity.PlannedStartUtc).IsRequired();
-        builder.Property(activity => activity.PlannedEndUtc).IsRequired();
+        builder.Property(activity => activity.PlannedStartUtc).HasConversion(UtcDateTimeConverter).IsRequired();
+        builder.Property(activity => activity.PlannedEndUtc).HasConversion(UtcDateTimeConverter).IsRequired();
         builder.Property(activity => activity.TimeZoneId).HasMaxLength(64).IsRequired();
         builder.Property(activity => activity.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(activity => activity.CancellationReason).HasMaxLength(500);
-        builder.Property(activity => activity.CreatedAtUtc).IsRequired();
-        builder.Property(activity => activity.UpdatedAtUtc).IsRequired();
+        builder.Property(activity => activity.CreatedAtUtc).HasConversion(UtcDateTimeConverter).IsRequired();
+        builder.Property(activity => activity.UpdatedAtUtc).HasConversion(UtcDateTimeConverter).IsRequired();
 
         builder.Ignore(activity => activity.RequiresScores);
 

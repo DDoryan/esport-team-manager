@@ -11,6 +11,9 @@ using EsportTeamManager.Application.Accounts;
 using EsportTeamManager.Web.Services.Accounts;
 using EsportTeamManager.Application.Teams;
 using EsportTeamManager.Infrastructure.Teams;
+using EsportTeamManager.Application.Activities;
+using EsportTeamManager.Infrastructure.Activities;
+using Microsoft.AspNetCore.Routing;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,6 +73,7 @@ builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
 builder.Services.AddScoped<IUserTeamService, UserTeamService>();
+builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -96,8 +100,15 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapControllers();
-app.MapControllerRoute(name: "root", pattern: "", defaults: new { controller = "Teams", action = "Entry" }).WithStaticAssets();
-app.MapControllerRoute(name: "default", pattern: "{controller=Activities}/{action=Index}/{id?}").WithStaticAssets();
+
+var rootRouteDefaults = new
+{
+    controller = "Teams",
+    action = "Entry"
+};
+
+app.MapControllerRoute(name: "root", pattern: "", defaults: rootRouteDefaults).WithMetadata(new SuppressLinkGenerationMetadata()).WithStaticAssets();
+app.MapControllerRoute(name: "default", pattern: "{controller}/{action=Index}/{id?}").WithStaticAssets();
 
 app.Run();
 

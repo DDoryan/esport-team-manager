@@ -57,9 +57,11 @@ h6
 
 .app-main 
 {
+    display: flex;
     width: 100%;
     padding-top: 2rem;
     padding-bottom: 2rem;
+    flex-direction: column;
 }
 
     .app-main:focus 
@@ -192,34 +194,40 @@ a:focus-visible
     display: none;
 }
 
-.team-card-link {
+.team-card-link 
+{
     display: block;
     height: 100%;
     color: inherit;
     text-decoration: none;
 }
 
-    .team-card-link:hover {
+    .team-card-link:hover 
+    {
         color: inherit;
     }
 
-        .team-card-link:hover .team-card {
+        .team-card-link:hover .team-card 
+        {
             border-color: var(--app-primary);
             transform: translateY(-0.2rem);
         }
 
-.team-card {
+.team-card 
+{
     min-height: 13rem;
     transition: border-color 150ms ease, transform 150ms ease;
 }
 
-.team-card-header {
+.team-card-header 
+{
     display: flex;
     align-items: center;
     gap: 1rem;
 }
 
-.team-card-mark {
+.team-card-mark 
+{
     display: inline-flex;
     width: 3.5rem;
     height: 3.5rem;
@@ -234,22 +242,26 @@ a:focus-visible
     letter-spacing: 0.05em;
 }
 
-.team-owner-badge {
+.team-owner-badge 
+{
     background: #7c3aed;
     color: #ffffff;
 }
 
-.team-card-calendar {
+.team-card-calendar 
+{
     align-self: flex-end;
     color: var(--app-primary);
     font-weight: 700;
 }
 
-.team-create-panel {
+.team-create-panel 
+{
     max-width: 65rem;
 }
 
-.team-create-shortcut-container {
+.team-create-shortcut-container 
+{
     position: fixed;
     right: 0;
     bottom: 5rem;
@@ -260,24 +272,485 @@ a:focus-visible
     pointer-events: none;
 }
 
-.team-create-shortcut {
+.team-create-shortcut 
+{
     box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 35%);
     pointer-events: auto;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .team-card {
+@media (prefers-reduced-motion: reduce) 
+{
+    .team-card 
+    {
         transition: none;
     }
 
-    .team-card-link:hover .team-card {
+    .team-card-link:hover .team-card 
+    {
         transform: none;
     }
 }
 
-@media (max-width: 575.98px) {
-    .team-create-shortcut {
+@media (max-width: 575.98px) 
+{
+    .team-create-shortcut 
+    {
         right: 1rem;
         bottom: 1rem;
+    }
+}
+
+.team-calendar-page 
+{
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+}
+
+.team-calendar-frame 
+{
+    display: flex;
+    max-width: 100%;
+    min-height: 0;
+    padding: 1rem;
+    flex: 1;
+    overflow-x: auto;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: var(--app-surface);
+}
+
+    .team-calendar-frame:focus-visible 
+    {
+        outline: 3px solid var(--app-focus);
+        outline-offset: 3px;
+    }
+
+#team-calendar
+{
+    --bs-body-bg: var(--app-surface);
+    --bs-body-color: var(--app-text);
+    --bs-border-color: var(--app-border);
+    --bs-secondary-bg: var(--app-surface);
+    --bs-tertiary-bg: var(--app-surface-elevated);
+    --bs-emphasis-color: var(--app-text);
+    --bs-secondary-color: var(--app-text-muted);
+
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    background-color: var(--app-surface);
+    color: var(--app-text);
+}
+
+    #team-calendar[aria-busy="true"] 
+    {
+        opacity: 0.7;
+    }
+
+.calendar-date-picker
+{
+    position: fixed;
+    z-index: 2000;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.calendar-date-picker::-webkit-calendar-picker-indicator
+{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+.calendar-navigation-arrow-button,
+.calendar-date-picker-button
+{
+    width: 2.35rem !important;
+    height: 2.35rem !important;
+    padding: 0 !important;
+    border: 1px solid var(--app-border) !important;
+    border-radius: 0.45rem !important;
+    background: var(--app-surface-elevated) !important;
+    box-shadow: none !important;
+}
+
+.calendar-navigation-arrow-button
+{
+    color: var(--app-text-muted) !important;
+}
+
+.calendar-date-picker-button
+{
+    color: var(--app-primary) !important;
+}
+
+.calendar-navigation-arrow-button:hover,
+.calendar-date-picker-button:hover
+{
+    border-color: var(--app-primary) !important;
+    background: var(--app-surface) !important;
+    color: var(--app-primary) !important;
+}
+
+.calendar-selected-date-button
+{
+    min-width: 7.5rem !important;
+    padding: 0.35rem 0.5rem !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--app-primary) !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+}
+
+.calendar-selected-date-button:hover
+{
+    border-color: var(--app-primary) !important;
+    background: var(--app-surface) !important;
+    color: var(--app-primary) !important;
+}
+
+.calendar-view-button
+{
+    padding: 0.4rem 0.75rem !important;
+    border: 1px solid var(--app-border) !important;
+    border-radius: 0.45rem !important;
+    background: var(--app-surface-elevated) !important;
+    color: var(--app-text-muted) !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+}
+
+.calendar-view-button:hover
+{
+    border-color: var(--app-primary) !important;
+    background: var(--app-surface) !important;
+    color: var(--app-text) !important;
+}
+
+.calendar-view-button.calendar-view-button-active
+{
+    border-color: #0e7490 !important;
+    background: #0e7490 !important;
+    color: #ffffff !important;
+}
+
+#team-calendar .fc-toolbar-title
+{
+    color: var(--app-text) !important;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.team-calendar-frame,
+#team-calendar
+{
+    background-color: var(--app-surface) !important;
+}
+
+.calendar-day-cell,
+.calendar-day-header
+{
+    background-color: var(--app-surface) !important;
+}
+
+.calendar-day-lane
+{
+    background-color: transparent !important;
+}
+
+.calendar-four-week-view .calendar-day-header-divider
+{
+    height: 1px !important;
+    min-height: 1px !important;
+    border: 0 !important;
+    background-color: var(--app-border) !important;
+}
+
+.calendar-week-view .calendar-table-header
+{
+    border-top: 0 !important;
+    border-inline-start: 0 !important;
+    border-inline-end: 0 !important;
+    background-color: var(--app-surface) !important;
+    box-shadow: none !important;
+}
+
+.calendar-week-view .calendar-day-header-row,
+.calendar-week-view .calendar-day-header-row > *
+{
+    border: 0 !important;
+    background-color: var(--app-surface) !important;
+    box-shadow: none !important;
+}
+
+.calendar-week-view .calendar-day-header-divider
+{
+    height: 0 !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    background-color: transparent !important;
+}
+
+.calendar-week-view .calendar-day-header
+{
+    border-top: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--app-border) !important;
+    border-left: 0 !important;
+    background-color: var(--app-surface) !important;
+}
+
+.calendar-week-view .calendar-table-body
+{
+    position: relative;
+    border-left: 0 !important;
+    border-inline-start: 0 !important;
+}
+
+.calendar-week-view .calendar-table-body::after
+{
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    width: var(--calendar-time-axis-width, 2.5rem);
+    height: 1px;
+    background-color: var(--app-surface);
+    content: "";
+    pointer-events: none;
+}
+
+.calendar-week-view .calendar-time-axis-row,
+.calendar-week-view .calendar-time-axis-row > *,
+.calendar-week-view .calendar-time-axis-row > * > *,
+.calendar-week-view .calendar-time-axis-header,
+.calendar-week-view .calendar-time-axis-header-inner,
+.calendar-week-view .calendar-time-axis-header *
+{
+    border: 0 !important;
+    background-color: var(--app-surface) !important;
+    box-shadow: none !important;
+}
+
+.calendar-week-view div:has(> .calendar-time-axis-header)
+{
+    border: 0 !important;
+    background-color: var(--app-surface) !important;
+    box-shadow: none !important;
+}
+
+.calendar-week-view .calendar-time-axis-divider
+{
+    visibility: visible !important;
+    width: 1px !important;
+    min-width: 1px !important;
+    flex: 0 0 1px !important;
+    border: 0 !important;
+    background-color: var(--app-border) !important;
+}
+
+.calendar-week-view .calendar-time-axis-header,
+.calendar-week-view .calendar-time-axis-header-inner
+{
+    color: var(--app-text-muted) !important;
+    font-size: 0.75rem;
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+.calendar-week-view .calendar-time-slot-lane
+{
+    border-top: 1px solid var(--app-border) !important;
+    background-color: var(--app-surface) !important;
+}
+
+.calendar-week-view .fc-zT
+{
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
+}
+
+.calendar-week-view .fc-zT::-webkit-scrollbar
+{
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+.calendar-today-day
+{
+    background-color: var(--app-surface) !important;
+}
+
+.calendar-today-day-lane
+{
+    background-color: transparent !important;
+}
+
+.calendar-selected-day
+{
+    background-color: var(--app-surface) !important;
+    box-shadow: inset 0 0 0 2px var(--app-primary);
+}
+
+.calendar-selected-day-lane
+{
+    background-color: rgb(56 189 248 / 8%) !important;
+    box-shadow: inset 0 0 0 2px var(--app-primary);
+}
+
+.calendar-day-label
+{
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.calendar-day-number
+{
+    display: inline-flex;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: 0 0 1.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.calendar-day-number-selected
+{
+    color: var(--app-primary) !important;
+    font-weight: 700;
+}
+
+.calendar-day-number-today
+{
+    background-color: var(--app-text);
+    color: var(--app-background) !important;
+    font-weight: 700;
+}
+
+.calendar-day-number-today.calendar-day-number-selected
+{
+    background-color: var(--app-primary);
+    color: var(--app-background) !important;
+}
+
+.calendar-day-month
+{
+    font-weight: 700;
+}
+
+.calendar-day-header-label
+{
+    display: inline-flex;
+    min-height: 1.75rem;
+    padding: 0.25rem 0.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+}
+
+.calendar-day-header-selected
+{
+    color: var(--app-primary) !important;
+    font-weight: 700;
+}
+
+.calendar-day-header-today
+{
+    background-color: var(--app-text);
+    color: var(--app-background) !important;
+    font-weight: 700;
+}
+
+.calendar-day-header-today.calendar-day-header-selected
+{
+    background-color: var(--app-primary);
+    color: var(--app-background) !important;
+}
+
+@media (max-width: 575.98px)
+{
+    .team-calendar-frame
+    {
+        padding: 0.5rem;
+    }
+
+    #team-calendar .calendar-toolbar
+    {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-areas:
+            "navigation"
+            "period"
+            "views";
+        gap: 0.65rem;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    #team-calendar .calendar-toolbar-section
+    {
+        min-width: 0;
+    }
+
+    #team-calendar .calendar-toolbar-section-start
+    {
+        grid-area: navigation;
+        justify-self: start;
+    }
+
+    #team-calendar .calendar-toolbar-section-center
+    {
+        grid-area: period;
+        justify-self: start;
+    }
+
+    #team-calendar .calendar-toolbar-section-end
+    {
+        grid-area: views;
+        justify-self: start;
+    }
+
+    #team-calendar .calendar-toolbar-title
+    {
+        font-size: 1.15rem;
+        white-space: nowrap;
+    }   
+
+    .fc .fc-button
+    {
+        padding: 0.35rem 0.55rem;
+        font-size: 0.875rem;
+    }
+
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-daygrid-day-number
+    {
+        padding: 0.25rem;
+        font-size: 0.8rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) 
+{
+    #team-calendar 
+    {
+        scroll-behavior: auto;
     }
 }
