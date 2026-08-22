@@ -245,6 +245,164 @@ function getCalendarActivityStatusLabel(status)
     }
 }
 
+function formatMobileActivitySchedule(event, timeZone)
+{
+    const startDate = event.start;
+
+    if (!(startDate instanceof Date))
+    {
+        return "";
+    }
+
+    const endDate = event.end instanceof Date ? event.end : startDate;
+    const dateFormatter = new Intl.DateTimeFormat("fr-FR",
+    {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: timeZone
+    });
+    const timeFormatter = new Intl.DateTimeFormat("fr-FR",
+    {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: timeZone
+    });
+
+    const startDateLabel = dateFormatter.format(startDate);
+    const startTimeLabel = timeFormatter.format(startDate);
+    const endTimeLabel = timeFormatter.format(endDate);
+
+    if (isSameCalendarDate(startDate, endDate, timeZone))
+    {
+        return `${startDateLabel} · ${startTimeLabel}–${endTimeLabel}`;
+    }
+
+    const endDateLabel = dateFormatter.format(endDate);
+
+    return `${startDateLabel} ${startTimeLabel} – ${endDateLabel} ${endTimeLabel}`;
+}
+
+function createMobileActivityListItem(event, timeZone)
+{
+    const listItemElement = document.createElement("li");
+    const titleElement = document.createElement("h3");
+    const scheduleElement = document.createElement("p");
+    const statusElement = document.createElement("span");
+    const typeCode = typeof event.extendedProps.typeCode === "string" ? event.extendedProps.typeCode : "";
+    const status = typeof event.extendedProps.status === "string" ? event.extendedProps.status : "";
+    const complement = getCalendarActivityComplement(event);
+    const schedule = formatMobileActivitySchedule(event, timeZone);
+    const statusLabel = getCalendarActivityStatusLabel(status);
+    const accessibleParts = [event.title, schedule];
+
+    listItemElement.className = "team-activity-list-item";
+    listItemElement.classList.add(getCalendarActivityTypeClass(typeCode));
+
+    if (status === "Completed")
+    {
+        listItemElement.classList.add("calendar-activity-event-completed");
+    }
+
+    if (status === "Cancelled")
+    {
+        listItemElement.classList.add("calendar-activity-event-cancelled");
+    }
+
+    titleElement.className = "team-activity-list-item-title";
+    titleElement.textContent = event.title;
+
+    scheduleElement.className = "team-activity-list-item-schedule";
+    scheduleElement.textContent = schedule;
+
+    listItemElement.append(titleElement);
+    listItemElement.append(scheduleElement);
+
+    if (complement.length > 0)
+    {
+        const detailsElement = document.createElement("p");
+
+        detailsElement.className = "team-activity-list-item-details";
+        detailsElement.textContent = complement;
+
+        listItemElement.append(detailsElement);
+        accessibleParts.push(complement);
+    }
+
+    statusElement.className = "team-activity-list-item-status";
+    statusElement.textContent = status === "Completed" ? `${statusLabel} ✓` : statusLabel;
+
+    listItemElement.append(statusElement);
+
+    accessibleParts.push(statusLabel);
+    listItemElement.setAttribute("aria-label", accessibleParts.filter(part => part.length > 0).join(". "));
+
+    return listItemElement;
+}
+
+function renderMobileActivityList(activityListElement, activityListItemsElement, loadingElement, emptyElement, events, timeZone)
+{
+    const currentDate = new Date();
+    const chronologicalEvents = [...events]
+        .filter(event =>
+        {
+            if (!(event.start instanceof Date))
+            {
+                return false;
+            }
+
+            const endDate = event.end instanceof Date ? event.end : event.start;
+
+            return endDate.getTime() >= currentDate.getTime();
+        })
+        .sort((firstEvent, secondEvent) =>
+        {
+            const startDifference = firstEvent.start.getTime() - secondEvent.start.getTime();
+
+            if (startDifference !== 0)
+            {
+                return startDifference;
+            }
+
+            const firstEndTime = firstEvent.end instanceof Date ? firstEvent.end.getTime() : firstEvent.start.getTime();
+            const secondEndTime = secondEvent.end instanceof Date ? secondEvent.end.getTime() : secondEvent.start.getTime();
+
+            return firstEndTime - secondEndTime;
+        });
+
+    activityListItemsElement.replaceChildren();
+
+    if (chronologicalEvents.length > 0)
+    {
+        const fragment = document.createDocumentFragment();
+
+        for (const event of chronologicalEvents)
+        {
+            fragment.append(createMobileActivityListItem(event, timeZone));
+        }
+
+        activityListItemsElement.append(fragment);
+    }
+
+    loadingElement.hidden = true;
+    emptyElement.hidden = chronologicalEvents.length > 0;
+    activityListElement.setAttribute("aria-busy", "false");
+}
+
+function updateResponsiveCalendarView(calendar, mobileMediaQuery)
+{
+    if (!mobileMediaQuery.matches)
+    {
+        return;
+    }
+
+    if (calendar.view.type !== "dayGridFourWeek")
+    {
+        calendar.changeView("dayGridFourWeek");
+    }
+}
+
 function createCalendarActivityEventContent(info)
 {
     const contentElement = document.createElement("span");
@@ -331,6 +489,10 @@ document.addEventListener("DOMContentLoaded", () =>
     const calendarElement = document.getElementById("team-calendar");
     const datePickerElement = document.getElementById("calendar-date-picker");
     const loadErrorElement = document.getElementById("calendar-load-error");
+    const activityListElement = document.getElementById("team-activity-list");
+    const activityListItemsElement = activityListElement?.querySelector(".team-activity-list-items") ?? null;
+    const activityListLoadingElement = activityListElement?.querySelector(".team-activity-list-loading") ?? null;
+    const activityListEmptyElement = activityListElement?.querySelector(".team-activity-list-empty") ?? null;
 
     if (calendarElement === null)
     {
@@ -350,7 +512,7 @@ document.addEventListener("DOMContentLoaded", () =>
     const eventsUrl = calendarElement.dataset.eventsUrl;
     const teamTimeZone = calendarElement.dataset.teamTimeZone;
 
-    if (!eventsUrl || !teamTimeZone || datePickerElement === null)
+    if (!eventsUrl || !teamTimeZone || datePickerElement === null || activityListElement === null || activityListItemsElement === null || activityListLoadingElement === null || activityListEmptyElement === null)
     {
         if (loadErrorElement !== null)
         {
@@ -359,6 +521,8 @@ document.addEventListener("DOMContentLoaded", () =>
 
         return;
     }
+
+    const mobileMediaQuery = window.matchMedia("(max-width: 575.98px)");
 
     const calendar = new FullCalendar.Calendar(calendarElement,
     {
@@ -508,6 +672,10 @@ document.addEventListener("DOMContentLoaded", () =>
             url: eventsUrl,
             method: "GET"
         },
+        eventsSet: events =>
+        {
+            renderMobileActivityList(activityListElement, activityListItemsElement, activityListLoadingElement, activityListEmptyElement, events, teamTimeZone);
+        },
         loading: isLoading =>
         {
             calendarElement.setAttribute("aria-busy", isLoading.toString());
@@ -533,6 +701,9 @@ document.addEventListener("DOMContentLoaded", () =>
             if (loadErrorElement !== null)
             {
                 loadErrorElement.hidden = false;
+                activityListElement.setAttribute("aria-busy", "false");
+                activityListLoadingElement.hidden = true;
+                activityListEmptyElement.hidden = true;
             }
         }
     });
@@ -553,9 +724,16 @@ document.addEventListener("DOMContentLoaded", () =>
     {
         updateCalendarAxisWidth(calendarElement);
         alignDatePickerWithButton(calendarElement, datePickerElement);
+        updateResponsiveCalendarView(calendar, mobileMediaQuery);
+    });
+
+    mobileMediaQuery.addEventListener("change", () =>
+    {
+        updateResponsiveCalendarView(calendar, mobileMediaQuery);
     });
 
     calendar.render();
+    updateResponsiveCalendarView(calendar, mobileMediaQuery);
     updateSelectedDateButton(calendarElement, datePickerElement, calendar.getDate(), teamTimeZone);
     updateViewButtons(calendarElement, calendar.view.type);
     updateCalendarAxisWidth(calendarElement);
