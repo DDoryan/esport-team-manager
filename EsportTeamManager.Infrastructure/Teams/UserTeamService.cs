@@ -103,7 +103,7 @@ public sealed class UserTeamService : IUserTeamService
             .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new { item.Team, Role = role })
             .OrderBy(item => item.Team.Name)
             .ThenBy(item => item.Team.Tag)
-            .Select(item => new UserTeamSummary(item.Team.TeamId, item.Team.Name, item.Team.Tag, item.Role.Label, item.Team.OwnerUserId == userId))
+            .Select(item => new UserTeamSummary(item.Team.TeamId, item.Team.Name, item.Team.Tag, item.Team.TimeZoneId, item.Role.Label, item.Team.OwnerUserId == userId))
             .ToListAsync(cancellationToken);
     }
 

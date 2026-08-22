@@ -1,0 +1,32 @@
+{
+  "version": "3.0",
+  "defaultProvider": "jsdelivr",
+  "libraries": [
+    {
+      "library": "fullcalendar@7.0.2",
+      "destination": "wwwroot/lib/fullcalendar/",
+      "files": [
+        "all/global.min.js",
+        "locales/fr/global.min.js",
+        "skeleton.css"
+      ]
+    },
+    {
+      "library": "@fullcalendar/bootstrap5@7.0.2",
+      "destination": "wwwroot/lib/fullcalendar-bootstrap5/",
+      "files": [
+        "global.min.js",
+        "theme.css"
+      ]
+    },
+    {
+      "library": "bootstrap-icons@1.13.1",
+      "destination": "wwwroot/lib/bootstrap-icons/",
+      "files": [
+        "font/bootstrap-icons.min.css",
+        "font/fonts/bootstrap-icons.woff",
+        "font/fonts/bootstrap-icons.woff2"
+      ]
+    }
+  ]
+}

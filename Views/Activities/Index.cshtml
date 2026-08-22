@@ -1,46 +1,58 @@
-﻿@model IReadOnlyCollection<RepriseWeb.ViewModels.Activities.ActivityListItemViewModel>
+﻿@model RepriseWeb.ViewModels.Activities.TeamCalendarViewModel
 
 @{
-    string teamName = ViewData["TeamName"] as string ?? "équipe";
-    ViewData["Title"] = $"Activités — {teamName}";
+    ViewData["Title"] = $"Calendrier — {Model.TeamName}";
+    string eventsUrl = Url.Action("Events", "Activities", new { teamId = Model.TeamId }) ?? string.Empty;
 }
 
-<h1>Activités — @teamName</h1>
+<section class="team-calendar-page" aria-labelledby="calendar-title">
+    <header class="mb-4">
+        <h1 id="calendar-title" class="mb-2">Calendrier — @Model.TeamName</h1>
+        <p class="text-body-secondary mb-0">
+            Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
+        </p>
+    </header>
 
-@if (Model.Count == 0)
-{
-    <div class="alert alert-secondary" role="status">
-        Aucune activité planifiée ou terminée.
+    <p id="calendar-scroll-help" class="visually-hidden">
+        Sur un petit écran, le calendrier peut défiler horizontalement.
+    </p>
+
+    <div class="team-calendar-frame" tabindex="0" aria-describedby="calendar-scroll-help">
+        <div id="team-calendar"
+             data-events-url="@eventsUrl"
+             data-team-time-zone="@Model.TimeZoneId"
+             aria-label="Calendrier de l’équipe @Model.TeamName">
+        </div>
     </div>
+
+    <input id="calendar-date-picker"
+           class="calendar-date-picker"
+           type="date"
+           tabindex="-1"
+           aria-label="Sélectionner une date du calendrier" />
+
+    <div id="calendar-load-error" class="alert alert-danger mt-3" role="alert" hidden>
+        Le calendrier n’a pas pu être chargé. Veuillez actualiser la page.
+    </div>
+
+    <noscript>
+        <div class="alert alert-warning mt-3" role="alert">
+            JavaScript doit être activé pour afficher le calendrier.
+        </div>
+    </noscript>
+</section>
+
+@section Styles
+{
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/lib/fullcalendar/skeleton.css" />
+    <link rel="stylesheet" href="~/lib/fullcalendar-bootstrap5/theme.css" />
 }
-else
-{
-    <div class="table-responsive">
-        <table class="table table-dark table-striped align-middle">
-            <thead>
-                <tr>
-                    <th>Type</th>
-                    <th>Sous-titre</th>
-                    <th>Début prévu</th>
-                    <th>Fin prévue</th>
-                    <th>Fuseau</th>
-                    <th>État</th>
-                </tr>
-            </thead>
 
-            <tbody>
-                @foreach (var activity in Model)
-                {
-                    <tr>
-                        <td>@activity.TypeLabel</td>
-                        <td>@(activity.Subtitle ?? "—")</td>
-                        <td>@activity.PlannedStartUtc.ToString("dd/MM/yyyy HH:mm")</td>
-                        <td>@activity.PlannedEndUtc.ToString("dd/MM/yyyy HH:mm")</td>
-                        <td>@activity.TimeZoneId</td>
-                        <td>@activity.StatusLabel</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+@section Scripts
+{
+    <script src="~/lib/fullcalendar/all/global.min.js"></script>
+    <script src="~/lib/fullcalendar/locales/fr/global.min.js"></script>
+    <script src="~/lib/fullcalendar-bootstrap5/global.min.js"></script>
+    <script src="~/js/activities-calendar.js" asp-append-version="true"></script>
 }

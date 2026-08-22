@@ -1,10 +1,8 @@
 ﻿using System.Security.Claims;
+using EsportTeamManager.Application.Activities;
 using EsportTeamManager.Application.Teams;
-using EsportTeamManager.Domain.Enums;
-using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using RepriseWeb.ViewModels.Activities;
 
 namespace RepriseWeb.Controllers;
@@ -12,12 +10,14 @@ namespace RepriseWeb.Controllers;
 [Authorize]
 public class ActivitiesController : Controller
 {
-    private readonly ApplicationDbContext _context;
+    private const int MaximumPeriodLengthInDays = 29;
+
+    private readonly IActivityCalendarService _activityCalendarService;
     private readonly IUserTeamService _userTeamService;
 
-    public ActivitiesController(ApplicationDbContext context, IUserTeamService userTeamService)
+    public ActivitiesController(IActivityCalendarService activityCalendarService, IUserTeamService userTeamService)
     {
-        _context = context;
+        _activityCalendarService = activityCalendarService;
         _userTeamService = userTeamService;
     }
 
@@ -36,34 +36,73 @@ public class ActivitiesController : Controller
             return RedirectToAction("Entry", "Teams");
         }
 
-        IReadOnlyCollection<UserTeamSummary> userTeams = await _userTeamService.GetTeamsForUserAsync(currentUserId.Value, cancellationToken);
-        UserTeamSummary? currentTeam = userTeams.SingleOrDefault(team => team.TeamId == teamId);
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
 
         if (currentTeam is null)
         {
             return Forbid();
         }
 
-        List<ActivityListItemViewModel> activities = await _context.TeamActivities
-            .AsNoTracking()
-            .Where(activity => activity.TeamId == teamId && activity.Status != ActivityStatus.Cancelled)
-            .Select(activity => new ActivityListItemViewModel
-            {
-                ActivityId = activity.ActivityId,
-                TypeLabel = activity.ActivityType.Label,
-                Subtitle = activity.Subtitle,
-                PlannedStartUtc = activity.PlannedStartUtc,
-                PlannedEndUtc = activity.PlannedEndUtc,
-                TimeZoneId = activity.TimeZoneId,
-                StatusLabel = activity.Status == ActivityStatus.Planned ? "Planifiée" : activity.Status == ActivityStatus.Completed ? "Terminée" : "Annulée"
-            })
-            .ToListAsync(cancellationToken);
+        TeamCalendarViewModel viewModel = new(currentTeam.TeamId, currentTeam.Name, currentTeam.TimeZoneId);
 
-        activities = activities.OrderBy(activity => activity.PlannedStartUtc).ToList();
+        return View(viewModel);
+    }
 
-        ViewData["TeamName"] = currentTeam.Name;
+    [HttpGet]
+    public async Task<IActionResult> Events(Guid teamId, DateTimeOffset? start, DateTimeOffset? end, bool includeCancelled = false, CancellationToken cancellationToken = default)
+    {
+        Guid? currentUserId = GetCurrentUserId();
 
-        return View(activities);
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        if (!start.HasValue || !end.HasValue)
+        {
+            return BadRequest();
+        }
+
+        DateTimeOffset normalizedStart = start.Value.ToUniversalTime();
+        DateTimeOffset normalizedEnd = end.Value.ToUniversalTime();
+
+        if (normalizedEnd <= normalizedStart || normalizedEnd - normalizedStart > TimeSpan.FromDays(MaximumPeriodLengthInDays))
+        {
+            return BadRequest();
+        }
+
+        IReadOnlyCollection<CalendarActivitySummary> activities = await _activityCalendarService.GetForPeriodAsync(teamId, normalizedStart, normalizedEnd, includeCancelled, cancellationToken);
+        IReadOnlyCollection<ActivityCalendarEventViewModel> events = activities
+            .Select(activity => new ActivityCalendarEventViewModel(
+                activity.ActivityId,
+                activity.TypeLabel,
+                activity.PlannedStartUtc,
+                activity.PlannedEndUtc,
+                activity.Subtitle,
+                activity.TimeZoneId,
+                activity.Status.ToString()))
+            .ToArray();
+
+        return Json(events);
+    }
+
+    private async Task<UserTeamSummary?> FindCurrentTeamAsync(Guid userId, Guid teamId, CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<UserTeamSummary> userTeams = await _userTeamService.GetTeamsForUserAsync(userId, cancellationToken);
+
+        return userTeams.SingleOrDefault(team => team.TeamId == teamId);
     }
 
     private Guid? GetCurrentUserId()
