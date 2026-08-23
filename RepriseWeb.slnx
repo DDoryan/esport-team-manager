@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="EsportTeamManager.Infrastructure.PostgreSql.Migrations/EsportTeamManager.Infrastructure.PostgreSql.Migrations.csproj" Id="c018b731-37db-4228-880c-b9030ee97c6e" />
   <Project Path="EsportTeamManager.Application/EsportTeamManager.Application.csproj" />
   <Project Path="EsportTeamManager.Domain/EsportTeamManager.Domain.csproj" />
   <Project Path="EsportTeamManager.Infrastructure/EsportTeamManager.Infrastructure.csproj" />

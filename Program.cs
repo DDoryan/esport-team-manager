@@ -1,5 +1,6 @@
 using EsportTeamManager.Infrastructure.Identity;
 using EsportTeamManager.Infrastructure.Persistence;
+using EsportTeamManager.Infrastructure.PostgreSql.Migrations;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -14,12 +15,40 @@ using EsportTeamManager.Infrastructure.Teams;
 using EsportTeamManager.Application.Activities;
 using EsportTeamManager.Infrastructure.Activities;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-string connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("La chaîne de connexion est introuvable.");
+string? railwayPort = Environment.GetEnvironmentVariable("PORT");
 
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
+if (int.TryParse(railwayPort, out int parsedRailwayPort))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{parsedRailwayPort}");
+}
+
+string databaseProvider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
+string connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("La chaîne de connexion est introuvable.");
+string postgreSqlMigrationsAssemblyName = typeof(PostgreSqlMigrationsAssemblyMarker).Assembly.GetName().Name ?? throw new InvalidOperationException("L’assembly des migrations PostgreSQL est introuvable.");
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    if (string.Equals(databaseProvider, "PostgreSql", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseNpgsql(connectionString, postgreSqlOptions =>
+        {
+            postgreSqlOptions.MigrationsAssembly(postgreSqlMigrationsAssemblyName);
+        });
+
+        return;
+    }
+
+    if (!string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Le fournisseur de base de données « {databaseProvider} » n’est pas pris en charge.");
+    }
+
+    options.UseSqlite(connectionString);
+});
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 {
@@ -40,6 +69,15 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
+
+if (builder.Environment.IsProduction())
+{
+    builder.Services.AddDataProtection().SetApplicationName("EsportTeamManager").PersistKeysToDbContext<ApplicationDbContext>();
+}
+else
+{
+    builder.Services.AddDataProtection().SetApplicationName("EsportTeamManager");
+}
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
 {
@@ -64,6 +102,7 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 
+builder.Services.AddHealthChecks();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkFactory>();
@@ -77,12 +116,30 @@ builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 builder.Services.AddScoped<IActivityEditingService, ActivityEditingService>();
 
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsProduction())
+{
+    builder.Services.AddOptions<BrevoEmailOptions>().Bind(builder.Configuration.GetSection(BrevoEmailOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+
+    builder.Services.AddHttpClient<IEmailService, BrevoEmailService>(httpClient =>
+    {
+        httpClient.BaseAddress = new Uri("https://api.brevo.com/");
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
+    });
+}
+else
 {
     builder.Services.AddSingleton<IEmailService, DevelopmentEmailService>();
 }
 
 var app = builder.Build();
+
+if (app.Environment.IsProduction())
+{
+    await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
+    ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    await context.Database.MigrateAsync();
+}
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 
@@ -100,6 +157,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
+
+app.MapHealthChecks("/health");
 
 app.MapControllers();
 
