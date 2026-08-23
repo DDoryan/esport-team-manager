@@ -1,0 +1,14 @@
+﻿**/bin/
+**/obj/
+.vs/
+.git/
+.gitignore
+**/*.user
+**/*.suo
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.db-journal
+TestResults/
+.env
+.env.*
