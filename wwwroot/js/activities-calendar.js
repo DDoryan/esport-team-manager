@@ -287,6 +287,8 @@ function formatMobileActivitySchedule(event, timeZone)
 function createMobileActivityListItem(event, timeZone)
 {
     const listItemElement = document.createElement("li");
+    const activityUrl = typeof event.url === "string" ? event.url : "";
+    const contentElement = document.createElement(activityUrl.length > 0 ? "a" : "div");
     const titleElement = document.createElement("h3");
     const scheduleElement = document.createElement("p");
     const statusElement = document.createElement("span");
@@ -299,6 +301,13 @@ function createMobileActivityListItem(event, timeZone)
 
     listItemElement.className = "team-activity-list-item";
     listItemElement.classList.add(getCalendarActivityTypeClass(typeCode));
+
+    contentElement.className = "team-activity-list-item-link";
+
+    if (activityUrl.length > 0)
+    {
+        contentElement.href = activityUrl;
+    }
 
     if (status === "Completed")
     {
@@ -316,8 +325,8 @@ function createMobileActivityListItem(event, timeZone)
     scheduleElement.className = "team-activity-list-item-schedule";
     scheduleElement.textContent = schedule;
 
-    listItemElement.append(titleElement);
-    listItemElement.append(scheduleElement);
+    contentElement.append(titleElement);
+    contentElement.append(scheduleElement);
 
     if (complement.length > 0)
     {
@@ -326,17 +335,18 @@ function createMobileActivityListItem(event, timeZone)
         detailsElement.className = "team-activity-list-item-details";
         detailsElement.textContent = complement;
 
-        listItemElement.append(detailsElement);
+        contentElement.append(detailsElement);
         accessibleParts.push(complement);
     }
 
     statusElement.className = "team-activity-list-item-status";
     statusElement.textContent = status === "Completed" ? `${statusLabel} ✓` : statusLabel;
 
-    listItemElement.append(statusElement);
+    contentElement.append(statusElement);
 
     accessibleParts.push(statusLabel);
-    listItemElement.setAttribute("aria-label", accessibleParts.filter(part => part.length > 0).join(". "));
+    contentElement.setAttribute("aria-label", accessibleParts.filter(part => part.length > 0).join(". "));
+    listItemElement.append(contentElement);
 
     return listItemElement;
 }

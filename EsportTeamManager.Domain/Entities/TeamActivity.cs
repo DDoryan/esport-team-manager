@@ -41,7 +41,7 @@ public class TeamActivity
 
     public IReadOnlyCollection<ActivityParticipant> Participants => _participants.AsReadOnly();
 
-    public bool RequiresScores => ActivityType.Code is "Pracc" or "OfficialMatch";
+    public bool RequiresScores => ActivityTypeRequiresScores(ActivityType.Code);
 
     private TeamActivity()
     {
@@ -86,6 +86,38 @@ public class TeamActivity
         {
             MatchDetail = new MatchDetail(ActivityId);
         }
+    }
+
+    public void ChangeType(ActivityType activityType, DateTimeOffset updatedAtUtc)
+    {
+        EnsureNotCancelled();
+
+        if (activityType is null)
+        {
+            throw new DomainException("The activity type is required.");
+        }
+
+        bool currentTypeRequiresScores = RequiresScores;
+        bool newTypeRequiresScores = ActivityTypeRequiresScores(activityType.Code);
+
+        if (Status == ActivityStatus.Completed && currentTypeRequiresScores != newTypeRequiresScores)
+        {
+            throw new DomainException("A completed activity cannot switch between match and non-match types.");
+        }
+
+        ActivityTypeId = activityType.ActivityTypeId;
+        ActivityType = activityType;
+
+        if (newTypeRequiresScores && MatchDetail is null)
+        {
+            MatchDetail = new MatchDetail(ActivityId);
+        }
+        else if (!newTypeRequiresScores && MatchDetail is not null)
+        {
+            MatchDetail = null;
+        }
+
+        Touch(updatedAtUtc);
     }
 
     public void UpdateTexts(string? subtitle, string? description, string? report, DateTimeOffset updatedAtUtc)
@@ -271,6 +303,11 @@ public class TeamActivity
 
             _participants.Add(participant);
         }
+    }
+
+    private static bool ActivityTypeRequiresScores(string typeCode)
+    {
+        return typeCode is "Pracc" or "OfficialMatch";
     }
 
     private void EnsureMatchActivity()

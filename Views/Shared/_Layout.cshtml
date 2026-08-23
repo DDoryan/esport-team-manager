@@ -1,4 +1,9 @@
-﻿<!DOCTYPE html>
+﻿@{
+    string? currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    bool teamsNavigationIsActive = string.Equals(currentController, "Teams", StringComparison.OrdinalIgnoreCase);
+    bool calendarNavigationIsActive = string.Equals(currentController, "Activities", StringComparison.OrdinalIgnoreCase);
+}
+<!DOCTYPE html>
 <html lang="fr" data-bs-theme="dark" class="@ViewData["HtmlClass"]">
 <head>
     <meta charset="utf-8" />
@@ -31,11 +36,11 @@
                         @if (User.Identity?.IsAuthenticated == true)
                         {
                             <li class="nav-item">
-                                <a class="nav-link" asp-area="" asp-controller="Teams" asp-action="Index">Mes équipes</a>
+                                <a class="nav-link app-main-navigation-link @(teamsNavigationIsActive ? "app-main-navigation-link-active" : string.Empty)" asp-area="" asp-controller="Teams" asp-action="Index" aria-current="@(teamsNavigationIsActive ? "page" : null)">Mes équipes</a>
                             </li>
 
                             <li class="nav-item">
-                                <a class="nav-link" asp-area="" asp-controller="Teams" asp-action="Entry">Calendrier</a>
+                                <a class="nav-link app-main-navigation-link @(calendarNavigationIsActive ? "app-main-navigation-link-active" : string.Empty)" asp-area="" asp-controller="Teams" asp-action="Entry" aria-current="@(calendarNavigationIsActive ? "page" : null)">Calendrier</a>
                             </li>
                         }
                     </ul>

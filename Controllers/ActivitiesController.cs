@@ -4,6 +4,7 @@ using EsportTeamManager.Application.Teams;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.ViewModels.Activities;
+using EsportTeamManager.Domain.Enums;
 
 namespace RepriseWeb.Controllers;
 
@@ -14,12 +15,14 @@ public class ActivitiesController : Controller
 
     private readonly IActivityCalendarService _activityCalendarService;
     private readonly IActivityCreationService _activityCreationService;
+    private readonly IActivityEditingService _activityEditingService;
     private readonly IUserTeamService _userTeamService;
 
-    public ActivitiesController(IActivityCalendarService activityCalendarService, IActivityCreationService activityCreationService, IUserTeamService userTeamService)
+    public ActivitiesController(IActivityCalendarService activityCalendarService, IActivityCreationService activityCreationService, IActivityEditingService activityEditingService, IUserTeamService userTeamService)
     {
         _activityCalendarService = activityCalendarService;
         _activityCreationService = activityCreationService;
+        _activityEditingService = activityEditingService;
         _userTeamService = userTeamService;
     }
 
@@ -153,6 +156,111 @@ public class ActivitiesController : Controller
     }
 
     [HttpGet]
+    public async Task<IActionResult> Edit(Guid teamId, Guid activityId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction("Entry", "Teams");
+        }
+
+        if (activityId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        ActivityEditDetails? details = await _activityEditingService.GetAsync(currentUserId.Value, teamId, activityId, cancellationToken);
+
+        if (details is null)
+        {
+            return NotFound();
+        }
+
+        EditActivityViewModel viewModel = BuildEditViewModel(details);
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Edit(EditActivityViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (model.TeamId == Guid.Empty || model.ActivityId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, model.TeamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        ActivityEditDetails? details = await _activityEditingService.GetAsync(currentUserId.Value, model.TeamId, model.ActivityId, cancellationToken);
+
+        if (details is null)
+        {
+            return NotFound();
+        }
+
+        if (!details.CanEdit)
+        {
+            return Forbid();
+        }
+
+        if (model.PlannedStartLocal.HasValue && model.PlannedEndLocal.HasValue && model.PlannedEndLocal.Value <= model.PlannedStartLocal.Value)
+        {
+            ModelState.AddModelError(nameof(model.PlannedEndLocal), "La fin prévue doit être strictement postérieure au début prévu.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            EditActivityViewModel invalidViewModel = BuildEditViewModel(details, model);
+
+            return View(invalidViewModel);
+        }
+
+        UpdateActivityRequest request = new(currentUserId.Value, model.TeamId, model.ActivityId, model.ActivityTypeId!.Value, model.PlannedStartLocal!.Value, model.PlannedEndLocal!.Value, model.Subtitle, model.Description, model.Report);
+        UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            EditActivityViewModel failedViewModel = BuildEditViewModel(details, model);
+
+            return View(failedViewModel);
+        }
+
+        TempData["SuccessMessage"] = "Les modifications de l’activité ont été enregistrées.";
+
+        return RedirectToAction(nameof(Edit), new { teamId = model.TeamId, activityId = model.ActivityId });
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Events(Guid teamId, DateTimeOffset? start, DateTimeOffset? end, bool includeCancelled = false, CancellationToken cancellationToken = default)
     {
         Guid? currentUserId = GetCurrentUserId();
@@ -191,6 +299,7 @@ public class ActivitiesController : Controller
         IReadOnlyCollection<ActivityCalendarEventViewModel> events = activities
             .Select(activity => new ActivityCalendarEventViewModel(
                 activity.ActivityId,
+                Url.Action(nameof(Edit), "Activities", new { teamId, activityId = activity.ActivityId }) ?? string.Empty,
                 activity.TypeLabel,
                 activity.TypeCode,
                 activity.Subtitle,
@@ -229,6 +338,70 @@ public class ActivitiesController : Controller
             .ToArray();
 
         return model;
+    }
+
+    private static EditActivityViewModel BuildEditViewModel(ActivityEditDetails details, EditActivityViewModel? model = null)
+    {
+        bool initializeEditableValues = model is null;
+        EditActivityViewModel viewModel = model ?? new EditActivityViewModel();
+
+        viewModel.TeamId = details.TeamId;
+        viewModel.ActivityId = details.ActivityId;
+        viewModel.TeamName = details.TeamName;
+        viewModel.TimeZoneId = details.TimeZoneId;
+        viewModel.StatusLabel = CreateStatusLabel(details.Status);
+        viewModel.CancellationReason = details.CancellationReason;
+        viewModel.OpponentName = details.OpponentName;
+        viewModel.TeamScore = details.TeamScore;
+        viewModel.OpponentScore = details.OpponentScore;
+        viewModel.UpdatedAtUtc = details.UpdatedAtUtc;
+        viewModel.CanEdit = details.CanEdit;
+        viewModel.ActivityTypes = details.ActivityTypes
+            .Select(activityType => new ActivityTypeOptionViewModel(activityType.ActivityTypeId, activityType.Code, activityType.Label))
+            .ToArray();
+        viewModel.Participants = details.Participants
+            .Select(participant => new ActivityEditParticipantViewModel(participant.TeamMembershipId, participant.DisplayName, participant.RoleLabel, participant.IsOwner, CreateAttendanceLabel(participant.Attendance)))
+            .ToArray();
+        viewModel.Links = details.Links
+            .Select(link => new ActivityEditLinkViewModel(link.ActivityLinkId, link.Name, link.Url))
+            .ToArray();
+
+        if (initializeEditableValues)
+        {
+            viewModel.ActivityTypeId = details.ActivityTypeId;
+            viewModel.Subtitle = details.Subtitle;
+            viewModel.PlannedStartLocal = details.PlannedStartLocal;
+            viewModel.PlannedEndLocal = details.PlannedEndLocal;
+            viewModel.Description = details.Description;
+            viewModel.Report = details.Report;
+        }
+
+        ActivityTypeOptionViewModel? selectedActivityType = viewModel.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == viewModel.ActivityTypeId);
+        viewModel.TypeCode = selectedActivityType?.Code ?? details.TypeCode;
+        viewModel.TypeLabel = selectedActivityType?.Label ?? details.TypeLabel;
+
+        return viewModel;
+    }
+
+    private static string CreateStatusLabel(ActivityStatus status)
+    {
+        return status switch
+        {
+            ActivityStatus.Planned => "Planifiée",
+            ActivityStatus.Completed => "Terminée",
+            ActivityStatus.Cancelled => "Annulée",
+            _ => status.ToString()
+        };
+    }
+
+    private static string CreateAttendanceLabel(Attendance? attendance)
+    {
+        return attendance switch
+        {
+            Attendance.Present => "Présent",
+            Attendance.Absent => "Absent",
+            _ => "Non renseignée"
+        };
     }
 
     private Guid? GetCurrentUserId()

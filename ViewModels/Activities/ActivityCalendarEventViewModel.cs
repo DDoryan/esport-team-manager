@@ -4,6 +4,8 @@ public sealed class ActivityCalendarEventViewModel
 {
     public Guid Id { get; }
 
+    public string Url { get; }
+
     public string Title { get; }
 
     public string TypeCode { get; }
@@ -20,9 +22,10 @@ public sealed class ActivityCalendarEventViewModel
 
     public string Status { get; }
 
-    public ActivityCalendarEventViewModel(Guid id, string title, string typeCode, string? subtitle, string? opponentName, DateTimeOffset start, DateTimeOffset end, string timeZoneId, string status)
+    public ActivityCalendarEventViewModel(Guid id, string url, string title, string typeCode, string? subtitle, string? opponentName, DateTimeOffset start, DateTimeOffset end, string timeZoneId, string status)
     {
         Id = id;
+        Url = url;
         Title = title;
         TypeCode = typeCode;
         Subtitle = subtitle;
