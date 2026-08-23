@@ -66,6 +66,61 @@ namespace EsportTeamManager.Tests.Domain
         }
 
         [Fact]
+        public void ChangeType_FromMeetingToPracc_CreatesMatchDetail()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            ActivityType meetingType = new ActivityType(3, "Meeting", "Réunion", true);
+            ActivityType praccType = new ActivityType(1, "Pracc", "Pracc", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), meetingType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+
+            activity.ChangeType(praccType, createdAtUtc.AddMinutes(10));
+
+            Assert.Equal(praccType.ActivityTypeId, activity.ActivityTypeId);
+            Assert.Equal("Pracc", activity.ActivityType.Code);
+            Assert.True(activity.RequiresScores);
+            Assert.NotNull(activity.MatchDetail);
+            Assert.Equal(activity.ActivityId, activity.MatchDetail.ActivityId);
+        }
+
+        [Fact]
+        public void ChangeType_FromPraccToMeeting_RemovesMatchDetail()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            ActivityType praccType = new ActivityType(1, "Pracc", "Pracc", true);
+            ActivityType meetingType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), praccType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+
+            activity.ChangeType(meetingType, createdAtUtc.AddMinutes(10));
+
+            Assert.Equal(meetingType.ActivityTypeId, activity.ActivityTypeId);
+            Assert.Equal("Meeting", activity.ActivityType.Code);
+            Assert.False(activity.RequiresScores);
+            Assert.Null(activity.MatchDetail);
+        }
+
+        [Fact]
+        public void ChangeType_CompletedActivityCannotSwitchToMatchType()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid participantMembershipId = Guid.NewGuid();
+            ActivityType meetingType = new ActivityType(3, "Meeting", "Réunion", true);
+            ActivityType praccType = new ActivityType(1, "Pracc", "Pracc", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), meetingType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc);
+            Dictionary<Guid, Attendance> attendance = new Dictionary<Guid, Attendance>
+            {
+                [participantMembershipId] = Attendance.Present
+            };
+
+            activity.Complete(attendance, createdAtUtc.AddHours(2));
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.ChangeType(praccType, createdAtUtc.AddHours(3)));
+
+            Assert.Equal("A completed activity cannot switch between match and non-match types.", exception.Message);
+            Assert.Equal("Meeting", activity.ActivityType.Code);
+            Assert.Null(activity.MatchDetail);
+        }
+
+        [Fact]
         public void Complete_MeetingWithAttendance_CompletesActivity()
         {
             DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;

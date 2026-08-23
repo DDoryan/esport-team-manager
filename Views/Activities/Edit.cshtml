@@ -1,0 +1,322 @@
+﻿@model RepriseWeb.ViewModels.Activities.EditActivityViewModel
+
+@{
+    ViewData["Title"] = $"Modifier l’activité — {Model.TypeLabel}";
+    ViewData["HtmlClass"] = "activity-edit-fixed-page app-local-scroll-page";
+    bool matchSectionIsVisible = Model.TypeCode is "Pracc" or "OfficialMatch";
+    string statusClass = Model.StatusLabel switch
+    {
+        "Planifiée" => "activity-status-planned",
+        "Terminée" => "activity-status-completed",
+        "Annulée" => "activity-status-cancelled",
+        _ => string.Empty
+    };
+    string resultLabel = "Non disponible";
+
+    if (Model.TeamScore.HasValue && Model.OpponentScore.HasValue)
+    {
+        resultLabel = Model.TeamScore.Value > Model.OpponentScore.Value
+            ? "Victoire"
+            : Model.TeamScore.Value < Model.OpponentScore.Value
+                ? "Défaite"
+                : "Égalité";
+    }
+}
+
+<section class="activity-edit-page app-scroll-region" aria-labelledby="activity-edit-title">
+    <header class="activity-edit-header">
+        <div>
+            <h1 id="activity-edit-title" class="mb-2">Modifier l’activité — @Model.TypeLabel</h1>
+            <p class="text-body-secondary mb-0">
+                Dernière modification le @Model.UpdatedAtUtc.ToString("dd/MM/yyyy à HH:mm") UTC
+            </p>
+        </div>
+
+        @if (!Model.CanEdit)
+        {
+            <span class="badge text-bg-secondary">Lecture seule</span>
+        }
+    </header>
+
+    @if (!Model.CanEdit)
+    {
+        <div class="alert alert-secondary" role="status">
+            Vous pouvez consulter cette activité, mais votre rôle ne permet pas de la modifier.
+        </div>
+    }
+
+    <form id="activity-edit-form"
+          asp-controller="Activities"
+          asp-action="Edit"
+          method="post"
+          data-can-edit="@Model.CanEdit.ToString().ToLowerInvariant()">
+        <input asp-for="TeamId" type="hidden" />
+        <input asp-for="ActivityId" type="hidden" />
+
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="activity-edit-sheet">
+            <section class="activity-edit-section activity-edit-state-section" aria-labelledby="activity-state-title">
+                <h2 id="activity-state-title" class="activity-edit-section-title">État</h2>
+
+                <div class="activity-edit-state-content">
+                    <span class="activity-status-badge @statusClass">@Model.StatusLabel</span>
+
+                    @if (Model.StatusLabel == "Annulée")
+                    {
+                        <div class="activity-edit-readonly-field">
+                            <span class="activity-edit-field-label">Motif d’annulation</span>
+                            <span>@(Model.CancellationReason ?? "Aucun motif renseigné")</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-main-information-title">
+                <h2 id="activity-main-information-title" class="activity-edit-section-title">Informations principales</h2>
+
+                <div class="activity-edit-grid activity-edit-grid-two-columns">
+                    <div class="activity-edit-field">
+                        <label asp-for="ActivityTypeId" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <select asp-for="ActivityTypeId"
+                                    class="form-select activity-edit-control"
+                                    data-activity-type-select>
+                                @foreach (var activityType in Model.ActivityTypes)
+                                {
+                                    <option value="@activityType.ActivityTypeId" data-type-code="@activityType.Code">
+                                        @activityType.Label
+                                    </option>
+                                }
+                            </select>
+
+                            <span asp-validation-for="ActivityTypeId" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">@Model.TypeLabel</div>
+                        }
+                    </div>
+
+                    <div class="activity-edit-field">
+                        <label asp-for="Subtitle" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="Subtitle"
+                                   class="form-control activity-edit-control"
+                                   maxlength="100"
+                                   placeholder="Facultatif" />
+
+                            <span asp-validation-for="Subtitle" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">@(Model.Subtitle ?? "Non renseigné")</div>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-schedule-title">
+                <h2 id="activity-schedule-title" class="activity-edit-section-title">Horaires et fuseau</h2>
+
+                <div class="activity-edit-grid activity-edit-grid-two-columns">
+                    <div class="activity-edit-field">
+                        <label asp-for="PlannedStartLocal" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="PlannedStartLocal"
+                                   asp-format="{0:yyyy-MM-ddTHH:mm}"
+                                   class="form-control activity-edit-control"
+                                   type="datetime-local" />
+
+                            <span asp-validation-for="PlannedStartLocal" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">
+                                @Model.PlannedStartLocal?.ToString("dd/MM/yyyy HH:mm")
+                            </div>
+                        }
+                    </div>
+
+                    <div class="activity-edit-field">
+                        <label asp-for="PlannedEndLocal" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="PlannedEndLocal"
+                                   asp-format="{0:yyyy-MM-ddTHH:mm}"
+                                   class="form-control activity-edit-control"
+                                   type="datetime-local" />
+
+                            <span asp-validation-for="PlannedEndLocal" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">
+                                @Model.PlannedEndLocal?.ToString("dd/MM/yyyy HH:mm")
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <p class="activity-edit-time-zone mb-0">
+                    Fuseau de l’équipe appliqué : <strong>@Model.TimeZoneId</strong>
+                </p>
+            </section>
+
+            <section class="activity-edit-section"
+                     aria-labelledby="activity-match-title"
+                     data-activity-match-section
+                     hidden="@(!matchSectionIsVisible)">
+                <h2 id="activity-match-title" class="activity-edit-section-title">Match</h2>
+
+                <div class="activity-edit-grid activity-edit-grid-four-columns">
+                    <div class="activity-edit-readonly-field">
+                        <span class="activity-edit-field-label">Équipe adverse</span>
+                        <span>@(Model.OpponentName ?? "Non renseignée")</span>
+                    </div>
+
+                    <div class="activity-edit-readonly-field">
+                        <span class="activity-edit-field-label">Score de @Model.TeamName</span>
+                        <span>@(Model.TeamScore?.ToString() ?? "—")</span>
+                    </div>
+
+                    <div class="activity-edit-readonly-field">
+                        <span class="activity-edit-field-label">Score adverse</span>
+                        <span>@(Model.OpponentScore?.ToString() ?? "—")</span>
+                    </div>
+
+                    <div class="activity-edit-readonly-field">
+                        <span class="activity-edit-field-label">Résultat calculé</span>
+                        <span>@resultLabel</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-participants-title">
+                <h2 id="activity-participants-title" class="activity-edit-section-title">Participants et présences</h2>
+
+                <div class="activity-edit-participant-list">
+                    @foreach (var participant in Model.Participants)
+                    {
+                        <div class="activity-edit-participant">
+                            <div>
+                                <span class="activity-edit-participant-name">@participant.DisplayName</span>
+                                <span class="badge text-bg-secondary">@participant.RoleLabel</span>
+
+                                @if (participant.IsOwner)
+                                {
+                                    <span class="badge team-owner-badge">Propriétaire</span>
+                                }
+                            </div>
+
+                            <span class="activity-edit-attendance">@participant.AttendanceLabel</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-description-title">
+                <h2 id="activity-description-title" class="activity-edit-section-title">Description</h2>
+
+                @if (Model.CanEdit)
+                {
+                    <textarea asp-for="Description"
+                              class="form-control activity-edit-control activity-edit-textarea"
+                              rows="5"
+                              maxlength="2000"
+                              placeholder="Facultatif"></textarea>
+
+                    <span asp-validation-for="Description" class="text-danger"></span>
+                }
+                else
+                {
+                    <div class="activity-edit-multiline-value">
+                        @(Model.Description ?? "Aucune description")
+                    </div>
+                }
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-links-title">
+                <h2 id="activity-links-title" class="activity-edit-section-title">Liens</h2>
+
+                @if (Model.Links.Count == 0)
+                {
+                    <p class="text-body-secondary mb-0">Aucun lien associé.</p>
+                }
+                else
+                {
+                    <div class="activity-edit-link-list">
+                        @foreach (var link in Model.Links)
+                        {
+                            <div class="activity-edit-link">
+                                <span>@link.Name</span>
+
+                                <a href="@link.Url" target="_blank" rel="noopener noreferrer">
+                                    @link.Url
+                                </a>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-strategies-title">
+                <h2 id="activity-strategies-title" class="activity-edit-section-title">Stratégies associées</h2>
+
+                <p class="text-body-secondary mb-0">
+                    Aucune stratégie associée.
+                </p>
+            </section>
+
+            <section class="activity-edit-section" aria-labelledby="activity-report-title">
+                <h2 id="activity-report-title" class="activity-edit-section-title">Compte rendu</h2>
+
+                @if (Model.CanEdit)
+                {
+                    <textarea asp-for="Report"
+                              class="form-control activity-edit-control activity-edit-textarea"
+                              rows="7"
+                              maxlength="5000"
+                              placeholder="Facultatif"></textarea>
+
+                    <span asp-validation-for="Report" class="text-danger"></span>
+                }
+                else
+                {
+                    <div class="activity-edit-multiline-value">
+                        @(Model.Report ?? "Aucun compte rendu")
+                    </div>
+                }
+            </section>
+        </div>
+
+        <div class="activity-edit-actions">
+            <a class="btn btn-outline-secondary"
+               asp-controller="Activities"
+               asp-action="Index"
+               asp-route-teamId="@Model.TeamId">
+                Retour au calendrier
+            </a>
+
+            @if (Model.CanEdit)
+            {
+                <button class="btn btn-primary" type="submit">
+                    Enregistrer les modifications
+                </button>
+            }
+        </div>
+    </form>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/activities-edit.js" asp-append-version="true"></script>
+}
