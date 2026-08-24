@@ -109,7 +109,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task Health_WhenTrustedProxyForwardsHttps_DoesNotRedirect()
+    public async Task Health_WhenRailwayForwardsHttps_DoesNotRedirect()
     {
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -118,8 +118,6 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
         });
 
         using HttpRequestMessage request = new(HttpMethod.Get, "/health");
-
-        request.Headers.Add("X-Real-IP", "203.0.113.10");
         request.Headers.Add("X-Forwarded-Proto", "https");
 
         using HttpResponseMessage response = await client.SendAsync(request);
@@ -128,27 +126,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task ForwardedHeaders_WhenRailwayProxyIsTrusted_UsesForwardedSchemeAndClientAddress()
-    {
-        IOptions<ForwardedHeadersOptions> options = _factory.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>();
-        ILoggerFactory loggerFactory = _factory.Services.GetRequiredService<ILoggerFactory>();
-        DefaultHttpContext context = new();
-
-        context.Connection.RemoteIpAddress = IPAddress.Parse("100.64.0.10");
-        context.Request.Scheme = "http";
-        context.Request.Headers["X-Real-IP"] = "203.0.113.10";
-        context.Request.Headers["X-Forwarded-Proto"] = "https";
-
-        ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
-
-        await middleware.Invoke(context);
-
-        Assert.Equal("https", context.Request.Scheme);
-        Assert.Equal(IPAddress.Parse("203.0.113.10"), context.Connection.RemoteIpAddress);
-    }
-
-    [Fact]
-    public async Task ForwardedHeaders_WhenProxyIsUnknown_IgnoresForwardedValues()
+    public async Task ForwardedHeaders_WhenRailwayForwardsHttps_UsesForwardedScheme()
     {
         IOptions<ForwardedHeadersOptions> options = _factory.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>();
         ILoggerFactory loggerFactory = _factory.Services.GetRequiredService<ILoggerFactory>();
@@ -156,8 +134,25 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
 
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
         context.Request.Scheme = "http";
-        context.Request.Headers["X-Real-IP"] = "203.0.113.10";
         context.Request.Headers["X-Forwarded-Proto"] = "https";
+
+        ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
+
+        await middleware.Invoke(context);
+
+        Assert.Equal("https", context.Request.Scheme);
+        Assert.Equal(IPAddress.Parse("192.0.2.10"), context.Connection.RemoteIpAddress);
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_WhenNoForwardedProtoIsProvided_KeepsHttpScheme()
+    {
+        IOptions<ForwardedHeadersOptions> options = _factory.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>();
+        ILoggerFactory loggerFactory = _factory.Services.GetRequiredService<ILoggerFactory>();
+        DefaultHttpContext context = new();
+
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
+        context.Request.Scheme = "http";
 
         ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
 
