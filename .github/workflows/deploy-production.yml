@@ -58,6 +58,7 @@ jobs:
     name: Déployer sur Railway
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: production
       url: https://esport-team-manager-production.up.railway.app
@@ -67,7 +68,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Déployer le commit sur Railway
-        run: npx --yes @railway/cli@latest up --service esport-team-manager --detach
+        run: npx --yes @railway/cli@latest up --service esport-team-manager
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
