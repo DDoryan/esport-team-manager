@@ -52,6 +52,43 @@ public sealed class UserTeamServiceTests
         Assert.Equal("Joueur", role.Label);
     }
 
+    [Fact]
+    public async Task CreateAsync_WhenRequestIsValid_CreatesSensitiveActionTrace()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamRequest request = new(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris");
+        DateTimeOffset beforeCreationUtc = DateTimeOffset.UtcNow;
+
+        CreateTeamResult result = await teamService.CreateAsync(request);
+
+        DateTimeOffset afterCreationUtc = DateTimeOffset.UtcNow;
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.TeamId);
+
+        Guid teamId = result.TeamId.Value;
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync();
+
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal("TEAM_CREATED", trace.ActionCode);
+        Assert.Equal(nameof(Team), trace.ObjectType);
+        Assert.Equal(teamId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+        Assert.InRange(trace.OccurredAtUtc, beforeCreationUtc, afterCreationUtc);
+        Assert.Equal(trace.OccurredAtUtc.AddMonths(6), trace.ExpiresAtUtc);
+    }
+
     [Theory]
     [InlineData("AB", "TAG", "Europe/Paris")]
     [InlineData("Valid team", "T", "Europe/Paris")]

@@ -4,20 +4,24 @@ using EsportTeamManager.Domain.Enums;
 using EsportTeamManager.Domain.Exceptions;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EsportTeamManager.Infrastructure.Teams;
 
 public sealed class UserTeamService : IUserTeamService
 {
     private const string PlayerRoleCode = "Player";
+    private const string TeamCreatedActionCode = "TEAM_CREATED";
 
     private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<UserTeamService> _logger;
 
-    public UserTeamService(ApplicationDbContext context, TimeProvider timeProvider)
+    public UserTeamService(ApplicationDbContext context, TimeProvider timeProvider, ILogger<UserTeamService> logger)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     public async Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -75,12 +79,18 @@ public sealed class UserTeamService : IUserTeamService
         _context.Teams.Add(team);
         _context.TeamMemberships.Add(membership);
 
+        ActionTrace actionTrace = new(request.OwnerUserId, teamId, TeamCreatedActionCode, nameof(Team), teamId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
+            _logger.LogError(exception, "Team creation persistence failed for actor {ActorUserId} and team {TeamId}.", request.OwnerUserId, teamId);
+
             return CreateTeamResult.Failure(["L’équipe n’a pas pu être créée. Veuillez réessayer."]);
         }
 

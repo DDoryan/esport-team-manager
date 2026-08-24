@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using EsportTeamManager.Tests.TestDoubles;
 using EsportTeamManager.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace EsportTeamManager.Tests.Integration.Identity;
 
@@ -164,11 +165,48 @@ public sealed class AccountRegistrationServiceTests
         Assert.NotEqual(default, legalAcceptance.AcceptedAtUtc);
     }
 
-    private static ServiceProvider CreateServiceProvider(string connectionString)
+    [Fact]
+    public async Task RegisterAsync_WhenConfirmationEmailFails_DoesNotLogSensitiveRequestData()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        RecordingLogger<AccountRegistrationService> logger = new();
+        FailingAccountEmailConfirmationService emailConfirmationService = new();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString, emailConfirmationService, logger);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        IAccountRegistrationService registrationService = scope.ServiceProvider.GetRequiredService<IAccountRegistrationService>();
+
+        RegisterAccountRequest request = new("sensitive@example.test", "SensitivePlayer", "S01", "Secret123!", true, true);
+
+        RegisterAccountResult result = await registrationService.RegisterAsync(request);
+
+        Assert.False(result.Succeeded);
+
+        RecordedLogEntry entry = Assert.Single(logger.Entries);
+
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Contains("Account registration rollback started because the confirmation email could not be sent for user", entry.Message);
+        Assert.False(entry.Message.Contains(request.Email, StringComparison.OrdinalIgnoreCase));
+        Assert.False(entry.Message.Contains(request.Password, StringComparison.Ordinal));
+        Assert.False(entry.Message.Contains(request.Pseudo, StringComparison.OrdinalIgnoreCase));
+        Assert.False(entry.Message.Contains(request.Tag, StringComparison.OrdinalIgnoreCase));
+        Assert.Null(entry.Exception);
+    }
+
+    private static ServiceProvider CreateServiceProvider(string connectionString, IAccountEmailConfirmationService? emailConfirmationService = null, ILogger<AccountRegistrationService>? registrationLogger = null)
     {
         ServiceCollection services = new();
 
         services.AddLogging();
+
+        if (registrationLogger is not null)
+        {
+            services.AddSingleton(registrationLogger);
+        }
+
         services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
 
         services.AddIdentityCore<ApplicationUser>(options =>
@@ -184,7 +222,7 @@ public sealed class AccountRegistrationServiceTests
         .AddEntityFrameworkStores<ApplicationDbContext>();
 
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddSingleton<IAccountEmailConfirmationService, SuccessfulAccountEmailConfirmationService>();
+        services.AddSingleton<IAccountEmailConfirmationService>(emailConfirmationService ?? new SuccessfulAccountEmailConfirmationService());
         services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 
         return services.BuildServiceProvider();

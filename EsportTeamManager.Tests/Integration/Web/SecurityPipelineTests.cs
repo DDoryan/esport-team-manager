@@ -41,7 +41,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task Error_WhenRequested_ReturnsGenericPageAndCorrelationIdentifier()
+    public async Task Error_WhenRequested_ReturnsGenericPageWithMatchingCorrelationIdentifier()
     {
         using HttpClient client = CreateHttpsClient();
 
@@ -49,8 +49,14 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
         string content = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+
+        IEnumerable<string> correlationIds = response.Headers.GetValues("X-Correlation-ID");
+        string correlationId = Assert.Single(correlationIds);
+
+        Assert.False(string.IsNullOrWhiteSpace(correlationId));
         Assert.Contains("Une erreur est survenue", content);
         Assert.Contains("Identifiant de suivi", content);
+        Assert.Contains(correlationId, content);
         Assert.DoesNotContain("Development Mode", content);
         Assert.DoesNotContain("Stack trace", content);
     }

@@ -4,6 +4,7 @@ using EsportTeamManager.Domain.Enums;
 using EsportTeamManager.Domain.Exceptions;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EsportTeamManager.Infrastructure.Activities;
 
@@ -11,14 +12,17 @@ public sealed class ActivityEditingService : IActivityEditingService
 {
     private const string ManagerRoleCode = "Manager";
     private const string CoachRoleCode = "Coach";
+    private const string ActivityUpdatedActionCode = "ACTIVITY_UPDATED";
 
     private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<ActivityEditingService> _logger;
 
-    public ActivityEditingService(ApplicationDbContext context, TimeProvider timeProvider)
+    public ActivityEditingService(ApplicationDbContext context, TimeProvider timeProvider, ILogger<ActivityEditingService> logger)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     public async Task<ActivityEditDetails?> GetAsync(Guid userId, Guid teamId, Guid activityId, CancellationToken cancellationToken = default)
@@ -281,12 +285,18 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure(["Les informations fournies ne permettent pas de modifier l’activité."]);
         }
 
+        ActionTrace actionTrace = new(request.UserId, request.TeamId, ActivityUpdatedActionCode, nameof(TeamActivity), request.ActivityId.ToString(), TraceOutcome.Succeeded, updatedAtUtc);
+
+        _context.ActionTraces.Add(actionTrace);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
+            _logger.LogError(exception, "Activity update persistence failed for actor {ActorUserId}, team {TeamId} and activity {ActivityId}.", request.UserId, request.TeamId, request.ActivityId);
+
             return UpdateActivityResult.Failure(["L’activité n’a pas pu être modifiée. Veuillez réessayer."]);
         }
 
