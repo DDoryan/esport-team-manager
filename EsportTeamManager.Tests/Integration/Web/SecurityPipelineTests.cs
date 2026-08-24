@@ -1,7 +1,12 @@
-﻿using System.Net;
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Testing;
-using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System.Net;
+using System.Text;
 
 namespace EsportTeamManager.Tests.Integration.Web;
 
@@ -101,6 +106,65 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
         Assert.NotNull(redirectLocation);
         Assert.Contains("/Account/Login", redirectLocation);
         Assert.Contains("ReturnUrl=%2FActivities", redirectLocation);
+    }
+
+    [Fact]
+    public async Task Health_WhenTrustedProxyForwardsHttps_DoesNotRedirect()
+    {
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("http://localhost")
+        });
+
+        using HttpRequestMessage request = new(HttpMethod.Get, "/health");
+
+        request.Headers.Add("X-Forwarded-For", "203.0.113.10");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_WhenRailwayProxyIsTrusted_UsesForwardedSchemeAndClientAddress()
+    {
+        IOptions<ForwardedHeadersOptions> options = _factory.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>();
+        ILoggerFactory loggerFactory = _factory.Services.GetRequiredService<ILoggerFactory>();
+        DefaultHttpContext context = new();
+
+        context.Connection.RemoteIpAddress = IPAddress.Parse("100.64.0.10");
+        context.Request.Scheme = "http";
+        context.Request.Headers["X-Forwarded-For"] = "203.0.113.10";
+        context.Request.Headers["X-Forwarded-Proto"] = "https";
+
+        ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
+
+        await middleware.Invoke(context);
+
+        Assert.Equal("https", context.Request.Scheme);
+        Assert.Equal(IPAddress.Parse("203.0.113.10"), context.Connection.RemoteIpAddress);
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_WhenProxyIsUnknown_IgnoresForwardedValues()
+    {
+        IOptions<ForwardedHeadersOptions> options = _factory.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>();
+        ILoggerFactory loggerFactory = _factory.Services.GetRequiredService<ILoggerFactory>();
+        DefaultHttpContext context = new();
+
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
+        context.Request.Scheme = "http";
+        context.Request.Headers["X-Forwarded-For"] = "203.0.113.10";
+        context.Request.Headers["X-Forwarded-Proto"] = "https";
+
+        ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
+
+        await middleware.Invoke(context);
+
+        Assert.Equal("http", context.Request.Scheme);
+        Assert.Equal(IPAddress.Parse("192.0.2.10"), context.Connection.RemoteIpAddress);
     }
 
     private HttpClient CreateHttpsClient()
