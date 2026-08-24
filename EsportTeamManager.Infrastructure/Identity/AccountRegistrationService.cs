@@ -5,6 +5,7 @@ using EsportTeamManager.Domain.Exceptions;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EsportTeamManager.Infrastructure.Identity;
 
@@ -14,13 +15,15 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
     private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
     private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<AccountRegistrationService> _logger;
 
-    public AccountRegistrationService(UserManager<ApplicationUser> userManager, IAccountEmailConfirmationService accountEmailConfirmationService, ApplicationDbContext context, TimeProvider timeProvider)
+    public AccountRegistrationService(UserManager<ApplicationUser> userManager, IAccountEmailConfirmationService accountEmailConfirmationService, ApplicationDbContext context, TimeProvider timeProvider, ILogger<AccountRegistrationService> logger)
     {
         _userManager = userManager;
         _accountEmailConfirmationService = accountEmailConfirmationService;
         _context = context;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     public async Task<RegisterAccountResult> RegisterAsync(RegisterAccountRequest request, CancellationToken cancellationToken = default)
@@ -81,8 +84,10 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
+            _logger.LogError(exception, "Legal acceptance persistence failed during account registration for actor {ActorUserId}.", user.Id);
+
             _context.Entry(legalAcceptance).State = EntityState.Detached;
             await _userManager.DeleteAsync(user);
 
@@ -93,6 +98,8 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
 
         if (!emailConfirmationResult.Succeeded)
         {
+            _logger.LogWarning("Account registration rollback started because the confirmation email could not be sent for actor {ActorUserId}.", user.Id);
+
             await _userManager.DeleteAsync(user);
 
             return RegisterAccountResult.Failure(["Le courriel de confirmation n’a pas pu être envoyé. Veuillez réessayer."]);

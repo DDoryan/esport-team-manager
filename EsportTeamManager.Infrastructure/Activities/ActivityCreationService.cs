@@ -4,6 +4,7 @@ using EsportTeamManager.Domain.Enums;
 using EsportTeamManager.Domain.Exceptions;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EsportTeamManager.Infrastructure.Activities;
 
@@ -11,14 +12,17 @@ public sealed class ActivityCreationService : IActivityCreationService
 {
     private const string ManagerRoleCode = "Manager";
     private const string CoachRoleCode = "Coach";
+    private const string ActivityCreatedActionCode = "ACTIVITY_CREATED";
 
     private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<ActivityCreationService> _logger;
 
-    public ActivityCreationService(ApplicationDbContext context, TimeProvider timeProvider)
+    public ActivityCreationService(ApplicationDbContext context, TimeProvider timeProvider, ILogger<ActivityCreationService> logger)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     public async Task<bool> CanCreateAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
@@ -240,12 +244,18 @@ public sealed class ActivityCreationService : IActivityCreationService
         _context.TeamActivities.Add(activity);
         _context.ActivityLinks.AddRange(activityLinks);
 
+        ActionTrace actionTrace = new(request.UserId, request.TeamId, ActivityCreatedActionCode, nameof(TeamActivity), activityId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
+            _logger.LogError(exception, "Activity creation persistence failed for actor {ActorUserId}, team {TeamId} and activity {ActivityId}.", request.UserId, request.TeamId, activityId);
+
             return CreateActivityResult.Failure(["L’activité n’a pas pu être créée. Veuillez réessayer."]);
         }
 
