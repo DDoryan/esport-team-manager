@@ -107,12 +107,10 @@ builder.Services.AddHealthChecks();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
-    options.RequireHeaderSymmetry = true;
-    options.ForwardedForHeaderName = "X-Real-IP";
-    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("100.64.0.0/10"));
-    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("fd12::/16"));
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
