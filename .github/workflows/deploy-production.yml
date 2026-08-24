@@ -1,0 +1,90 @@
+name: Déployer manuellement en production
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_confirmed:
+        description: "Une sauvegarde Railway récente a été créée et vérifiée"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Valider la version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Refuser une branche autre que master
+        if: github.ref != 'refs/heads/master'
+        run: |
+          echo "Le déploiement de production doit être déclenché depuis master."
+          exit 1
+
+      - name: Exiger la confirmation de sauvegarde
+        if: inputs.backup_confirmed != true
+        run: |
+          echo "Une sauvegarde doit être confirmée avant le déploiement."
+          exit 1
+
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restaurer les dépendances
+        run: dotnet restore RepriseWeb.slnx
+
+      - name: Compiler la solution
+        run: dotnet build RepriseWeb.slnx --configuration Release --no-restore
+
+      - name: Exécuter les tests
+        run: dotnet test RepriseWeb.slnx --configuration Release --no-build
+
+      - name: Signaler les vulnérabilités connues
+        run: dotnet list RepriseWeb.slnx package --vulnerable --include-transitive
+
+  deploy:
+    name: Déployer sur Railway
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://esport-team-manager-production.up.railway.app
+
+    steps:
+      - name: Récupérer le commit validé
+        uses: actions/checkout@v4
+
+      - name: Déployer le commit sur Railway
+        run: npx --yes @railway/cli@latest up --service esport-team-manager --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Vérifier le healthcheck de production
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            response="$(curl --silent --show-error --fail https://esport-team-manager-production.up.railway.app/health || true)"
+
+            if [ "$response" = "Healthy" ]; then
+              echo "Healthcheck de production réussi."
+              exit 0
+            fi
+
+            echo "Tentative $attempt/30 : déploiement pas encore prêt."
+            sleep 10
+          done
+
+          echo "Le healthcheck de production n'a pas répondu Healthy."
+          exit 1
