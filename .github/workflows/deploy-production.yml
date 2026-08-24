@@ -35,10 +35,10 @@ jobs:
           exit 1
 
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Installer .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Récupérer le commit validé
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Déployer le commit sur Railway
         run: npx --yes @railway/cli@latest up --service esport-team-manager
