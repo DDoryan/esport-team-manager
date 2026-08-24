@@ -141,6 +141,8 @@ else
     builder.Services.AddSingleton<IEmailService, DevelopmentEmailService>();
 }
 
+bool isRailway = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RAILWAY_PROJECT_ID"));
+
 var app = builder.Build();
 
 if (app.Environment.IsProduction())
@@ -161,7 +163,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!isRailway)
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseRouting();
 
