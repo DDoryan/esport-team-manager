@@ -29,6 +29,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - Visual Studio 2026 ou un environnement compatible .NET 10 ;
 - SQLite ;
 - Git.
+- pour exécuter les tests sur un poste où Smart App Control bloque les bibliothèques SQLite non signées : WSL2 avec Ubuntu 24.04 et le SDK .NET 10.
 
 ## Installation locale
 
@@ -69,6 +70,8 @@ La chaîne PostgreSQL de production comprend `GSS Encryption Mode=Disable` : le 
 
 Le service expose `/health` pour le contrôle de disponibilité. Le Dockerfile attendu par Railway se trouve à la racine : `/Dockerfile`.
 
+Sur Railway, `UseForwardedHeaders()` traite uniquement `X-Forwarded-Proto`. `UseHttpsRedirection()` reste actif hors Railway mais est ignoré lorsque `RAILWAY_PROJECT_ID` est défini : Railway termine TLS et assure lui-même la redirection HTTP publique, tandis que ses requêtes internes ne doivent pas chercher un port HTTPS Kestrel.
+
 ## Compilation et tests
 
 ```powershell
@@ -78,9 +81,32 @@ dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 
 Après QLT-013 : six projets compilés sans avertissement ni erreur et 111 tests automatisés réussis dans GitHub Actions.
 
-Sur le poste Windows actuel, Smart App Control peut bloquer le chargement de certaines DLL de test avec l’erreur `0x800711C7`. Ne pas désactiver cette protection : la CI Linux constitue la preuve de validation et QLT-014 doit restaurer l’exécution locale complète.
+### Exécution locale des tests avec Smart App Control
 
-Sur Railway, `UseForwardedHeaders()` traite uniquement `X-Forwarded-Proto`. `UseHttpsRedirection()` reste actif hors Railway mais est ignoré lorsque `RAILWAY_PROJECT_ID` est défini : Railway termine TLS et assure lui-même la redirection HTTP publique, tandis que ses requêtes internes ne doivent pas chercher un port HTTPS Kestrel.
+Sous Windows, Smart App Control peut empêcher `testhost.exe` de charger la bibliothèque non signée `SQLitePCLRaw.batteries_v2.dll`. Le chargement échoue alors avec le code `0x800711C7`, sans remettre en cause le code des tests ni leur résultat dans la CI Linux.
+
+Smart App Control ne doit pas être désactivé. Les tests sont exécutés localement dans Ubuntu 24.04 sous WSL2, avec le SDK .NET 10.
+
+Lors de la première utilisation, créer une copie Linux propre du dépôt en excluant les sorties générées sous Windows :
+
+```bash
+sudo apt-get update
+sudo apt-get install -y dotnet-sdk-10.0 rsync
+mkdir -p ~/source/repos/esport-team-manager
+rsync -a --exclude='.vs/' --exclude='bin/' --exclude='obj/' /mnt/c/Users/<utilisateur-windows>/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
+cd ~/source/repos/esport-team-manager
+dotnet test RepriseWeb.slnx
+```
+
+Avant les exécutions suivantes, resynchroniser la copie Linux depuis le dépôt Windows :
+
+```bash
+rsync -a --delete --exclude='.git/' --exclude='.vs/' --exclude='bin/' --exclude='obj/' /mnt/c/Users/<utilisateur-windows>/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
+cd ~/source/repos/esport-team-manager
+dotnet test RepriseWeb.slnx
+```
+
+La copie Linux conserve son propre dossier `.git`. L’option `--delete` aligne les fichiers de travail sans supprimer ce dossier ni modifier le dépôt Windows.
 
 ## Documentation
 
