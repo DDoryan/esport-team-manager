@@ -16,6 +16,7 @@ using EsportTeamManager.Application.Activities;
 using EsportTeamManager.Infrastructure.Activities;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -103,6 +104,16 @@ builder.Services.AddControllersWithViews(options =>
 });
 
 builder.Services.AddHealthChecks();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.RequireHeaderSymmetry = true;
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("100.64.0.0/10"));
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("fd12::/16"));
+});
+
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkFactory>();
@@ -140,6 +151,8 @@ if (app.Environment.IsProduction())
 
     await context.Database.MigrateAsync();
 }
+
+app.UseForwardedHeaders();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 
