@@ -7,8 +7,8 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** QLT-013 le 24 août 2026, en 1 h 30 pour 2 h estimées.
-- **Validation :** 111 tests automatisés réussis, CI GitHub Actions verte, déploiement Railway opérationnel, `/health` sain et aucun avertissement HTTPS dans les nouveaux logs.
+- **Dernier ticket clôturé :** QLT-014 le 24 août 2026, en 1 h 30 pour 2 h estimées.
+- **Validation :** 111 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` verte et production Railway inchangée.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - migrations PostgreSQL dans un projet dédié ;
 - ASP.NET Core Identity et clés Data Protection persistées en base ;
 - Brevo pour les courriels transactionnels ;
-- Docker pour la construction et Railway pour l’hébergement ;
+- Docker pour la construction et Railway pour l’hébergement.
 - journaux techniques corrélés et traces persistantes des actions sensibles, sans données personnelles ou secrets inutiles ;
 - traitement de `X-Forwarded-Proto` avant le pipeline et redirection HTTPS publique déléguée à Railway.
 
@@ -28,7 +28,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - SDK .NET 10 compatible avec la solution ;
 - Visual Studio 2026 ou un environnement compatible .NET 10 ;
 - SQLite ;
-- Git.
+- Git ;
 - pour exécuter les tests sur un poste où Smart App Control bloque les bibliothèques SQLite non signées : WSL2 avec Ubuntu 24.04 et le SDK .NET 10.
 
 ## Installation locale
@@ -79,7 +79,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après QLT-013 : six projets compilés sans avertissement ni erreur et 111 tests automatisés réussis dans GitHub Actions.
+Après QLT-014 : six projets compilés sans avertissement ni erreur ; 111 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
 
 ### Exécution locale des tests avec Smart App Control
 
