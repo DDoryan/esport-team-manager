@@ -119,7 +119,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
 
         using HttpRequestMessage request = new(HttpMethod.Get, "/health");
 
-        request.Headers.Add("X-Forwarded-For", "203.0.113.10");
+        request.Headers.Add("X-Real-IP", "203.0.113.10");
         request.Headers.Add("X-Forwarded-Proto", "https");
 
         using HttpResponseMessage response = await client.SendAsync(request);
@@ -136,7 +136,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
 
         context.Connection.RemoteIpAddress = IPAddress.Parse("100.64.0.10");
         context.Request.Scheme = "http";
-        context.Request.Headers["X-Forwarded-For"] = "203.0.113.10";
+        context.Request.Headers["X-Real-IP"] = "203.0.113.10";
         context.Request.Headers["X-Forwarded-Proto"] = "https";
 
         ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
@@ -156,7 +156,7 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
 
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
         context.Request.Scheme = "http";
-        context.Request.Headers["X-Forwarded-For"] = "203.0.113.10";
+        context.Request.Headers["X-Real-IP"] = "203.0.113.10";
         context.Request.Headers["X-Forwarded-Proto"] = "https";
 
         ForwardedHeadersMiddleware middleware = new(_ => Task.CompletedTask, loggerFactory, options);
