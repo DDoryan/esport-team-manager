@@ -3,6 +3,7 @@ using EsportTeamManager.Infrastructure.Identity;
 using EsportTeamManager.Web.Models.Account;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace EsportTeamManager.Web.Controllers;
 
@@ -12,13 +13,15 @@ public sealed class AccountController : Controller
     private readonly IAccountAuthenticationService _accountAuthenticationService;
     private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
     private readonly IAccountPasswordResetService _accountPasswordResetService;
+    private readonly IAccountProfileService _accountProfileService;
 
-    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService, IAccountPasswordResetService accountPasswordResetService)
+    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService, IAccountPasswordResetService accountPasswordResetService, IAccountProfileService accountProfileService)
     {
         _accountRegistrationService = accountRegistrationService;
         _accountAuthenticationService = accountAuthenticationService;
         _accountEmailConfirmationService = accountEmailConfirmationService;
         _accountPasswordResetService = accountPasswordResetService;
+        _accountProfileService = accountProfileService;
     }
 
     [AllowAnonymous]
@@ -197,6 +200,64 @@ public sealed class AccountController : Controller
         return View();
     }
 
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> Profile(CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out Guid userId))
+        {
+            return Challenge();
+        }
+
+        AccountProfile? profile = await _accountProfileService.GetProfileAsync(userId, cancellationToken);
+
+        if (profile is null)
+        {
+            return Challenge();
+        }
+
+        return View(new ProfileViewModel(profile.Pseudo, profile.Tag, profile.Email));
+    }
+
+    [Authorize]
+    [HttpGet]
+    public IActionResult ChangePassword()
+    {
+        return View(new ChangePasswordViewModel());
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        if (!TryGetCurrentUserId(out Guid userId))
+        {
+            return Challenge();
+        }
+
+        ChangeAccountPasswordRequest request = new(userId, model.CurrentPassword, model.NewPassword);
+        ChangeAccountPasswordResult result = await _accountProfileService.ChangePasswordAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(model);
+        }
+
+        TempData["ProfileSuccessMessage"] = "Votre mot de passe a été modifié. Les autres sessions ont été déconnectées.";
+
+        return RedirectToAction(nameof(Profile));
+    }
+
     [AllowAnonymous]
     [HttpGet]
     public IActionResult Login(string? returnUrl = null)
@@ -245,5 +306,12 @@ public sealed class AccountController : Controller
         await _accountAuthenticationService.LogoutAsync(cancellationToken);
 
         return RedirectToAction(nameof(Login));
+    }
+
+    private bool TryGetCurrentUserId(out Guid userId)
+    {
+        string? userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(userIdValue, out userId);
     }
 }

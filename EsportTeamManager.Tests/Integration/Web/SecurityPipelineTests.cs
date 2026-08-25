@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -160,6 +161,14 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
 
         Assert.Equal("http", context.Request.Scheme);
         Assert.Equal(IPAddress.Parse("192.0.2.10"), context.Connection.RemoteIpAddress);
+    }
+
+    [Fact]
+    public void SecurityStampValidation_WhenConfigured_RevalidatesEveryRequest()
+    {
+        IOptions<SecurityStampValidatorOptions> options = _factory.Services.GetRequiredService<IOptions<SecurityStampValidatorOptions>>();
+
+        Assert.Equal(TimeSpan.Zero, options.Value.ValidationInterval);
     }
 
     private HttpClient CreateHttpsClient()
