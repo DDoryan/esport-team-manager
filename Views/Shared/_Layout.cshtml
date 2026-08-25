@@ -1,7 +1,9 @@
 ﻿@{
     string? currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    string? currentAction = ViewContext.RouteData.Values["action"]?.ToString();
     bool teamsNavigationIsActive = string.Equals(currentController, "Teams", StringComparison.OrdinalIgnoreCase);
     bool calendarNavigationIsActive = string.Equals(currentController, "Activities", StringComparison.OrdinalIgnoreCase);
+    bool profileNavigationIsActive = string.Equals(currentController, "Account", StringComparison.OrdinalIgnoreCase) && (string.Equals(currentAction, "Profile", StringComparison.OrdinalIgnoreCase) || string.Equals(currentAction, "ChangePassword", StringComparison.OrdinalIgnoreCase));
 }
 <!DOCTYPE html>
 <html lang="fr" data-bs-theme="dark" class="@ViewData["HtmlClass"]">
@@ -49,10 +51,6 @@
                         @if (User.Identity?.IsAuthenticated == true)
                         {
                             <li class="nav-item">
-                                <span class="navbar-text">@User.Identity.Name</span>
-                            </li>
-
-                            <li class="nav-item">
                                 <form asp-controller="Account" asp-action="Logout" method="post">
                                     <button type="submit" class="btn btn-outline-secondary btn-sm">Se déconnecter</button>
                                 </form>
@@ -70,7 +68,17 @@
                         }
                     </ul>
 
-                    <span class="app-version ms-lg-3">MVP</span>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <a class="profile-navigation-link ms-lg-3"
+                           asp-controller="Account"
+                           asp-action="Profile"
+                           aria-current="@(profileNavigationIsActive ? "page" : null)"
+                           aria-label="Consulter mon profil"
+                           title="Mon profil">
+                            @User.Identity.Name
+                        </a>
+                    }
                 </div>
             </div>
         </nav>

@@ -90,6 +90,11 @@ builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
     options.TokenLifespan = TimeSpan.FromHours(24);
 });
 
+builder.Services.Configure<SecurityStampValidatorOptions>(options =>
+{
+    options.ValidationInterval = TimeSpan.Zero;
+});
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.Name = "__Host-EsportTeamManager.Auth";
@@ -124,6 +129,7 @@ builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkF
 builder.Services.AddScoped<IAccountEmailConfirmationService, AccountEmailConfirmationService>();
 builder.Services.AddScoped<IPasswordResetLinkFactory, PasswordResetLinkFactory>();
 builder.Services.AddScoped<IAccountPasswordResetService, AccountPasswordResetService>();
+builder.Services.AddScoped<IAccountProfileService, AccountProfileService>();
 builder.Services.AddScoped<IUnconfirmedAccountCleanupService, UnconfirmedAccountCleanupService>();
 builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
