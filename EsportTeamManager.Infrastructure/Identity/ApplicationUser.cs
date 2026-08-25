@@ -24,6 +24,10 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     public DateTimeOffset? EmailConfirmationSentAtUtc { get; private set; }
 
+    public DateTimeOffset? PasswordResetEmailWindowStartedAtUtc { get; private set; }
+
+    public int PasswordResetEmailCount { get; private set; }
+
     public DateTimeOffset? ConfirmedAtUtc { get; private set; }
 
     private ApplicationUser()
@@ -70,6 +74,8 @@ public sealed class ApplicationUser : IdentityUser<Guid>
         MinimumAgeDeclaredAtUtc = minimumAgeDeclaredAtUtc.ToUniversalTime();
         CreatedAtUtc = createdAtUtc.ToUniversalTime();
         EmailConfirmationSentAtUtc = null;
+        PasswordResetEmailWindowStartedAtUtc = null;
+        PasswordResetEmailCount = 0;
         ConfirmedAtUtc = null;
     }
 
@@ -83,6 +89,33 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     public void RecordConfirmationEmailSent(DateTimeOffset sentAtUtc)
     {
         EmailConfirmationSentAtUtc = sentAtUtc.ToUniversalTime();
+    }
+
+    public bool CanSendPasswordResetEmail(DateTimeOffset currentDateUtc)
+    {
+        DateTimeOffset normalizedCurrentDateUtc = currentDateUtc.ToUniversalTime();
+
+        if (PasswordResetEmailWindowStartedAtUtc is null || normalizedCurrentDateUtc >= PasswordResetEmailWindowStartedAtUtc.Value.AddHours(1))
+        {
+            return true;
+        }
+
+        return PasswordResetEmailCount < 3;
+    }
+
+    public void RecordPasswordResetEmailSent(DateTimeOffset sentAtUtc)
+    {
+        DateTimeOffset normalizedSentAtUtc = sentAtUtc.ToUniversalTime();
+
+        if (PasswordResetEmailWindowStartedAtUtc is null || normalizedSentAtUtc >= PasswordResetEmailWindowStartedAtUtc.Value.AddHours(1))
+        {
+            PasswordResetEmailWindowStartedAtUtc = normalizedSentAtUtc;
+            PasswordResetEmailCount = 1;
+
+            return;
+        }
+
+        PasswordResetEmailCount++;
     }
 
     public void MarkAsConfirmed(DateTimeOffset confirmedAtUtc)

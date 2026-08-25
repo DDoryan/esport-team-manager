@@ -11,12 +11,14 @@ public sealed class AccountController : Controller
     private readonly IAccountRegistrationService _accountRegistrationService;
     private readonly IAccountAuthenticationService _accountAuthenticationService;
     private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
+    private readonly IAccountPasswordResetService _accountPasswordResetService;
 
-    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService)
+    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService, IAccountPasswordResetService accountPasswordResetService)
     {
         _accountRegistrationService = accountRegistrationService;
         _accountAuthenticationService = accountAuthenticationService;
         _accountEmailConfirmationService = accountEmailConfirmationService;
+        _accountPasswordResetService = accountPasswordResetService;
     }
 
     [AllowAnonymous]
@@ -104,6 +106,93 @@ public sealed class AccountController : Controller
     [AllowAnonymous]
     [HttpGet]
     public IActionResult ResendConfirmationSent()
+    {
+        return View();
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ForgotPassword()
+    {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToAction("Entry", "Teams");
+        }
+
+        return View(new ForgotPasswordViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        AccountPasswordResetResult result = await _accountPasswordResetService.RequestPasswordResetAsync(model.Email, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, "La demande de réinitialisation n’a pas pu être traitée. Veuillez réessayer.");
+
+            return View(model);
+        }
+
+        return RedirectToAction(nameof(ForgotPasswordSent));
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ForgotPasswordSent()
+    {
+        return View();
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ResetPassword(Guid userId, string token)
+    {
+        if (userId == Guid.Empty || string.IsNullOrWhiteSpace(token))
+        {
+            return View("ResetPasswordInvalid");
+        }
+
+        return View(new ResetPasswordViewModel
+        {
+            UserId = userId,
+            Token = token
+        });
+    }
+
+    [AllowAnonymous]
+    [HttpPost]
+    public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        AccountPasswordResetResult result = await _accountPasswordResetService.ResetPasswordAsync(model.UserId, model.Token, model.Password);
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(model);
+        }
+
+        return RedirectToAction(nameof(ResetPasswordConfirmation));
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult ResetPasswordConfirmation()
     {
         return View();
     }

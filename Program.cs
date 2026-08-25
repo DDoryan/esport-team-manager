@@ -67,9 +67,14 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 
     options.User.RequireUniqueEmail = true;
     options.User.AllowedUserNameCharacters = null!;
+
+    options.Tokens.ProviderMap.Add("PasswordReset", new TokenProviderDescriptor(typeof(PasswordResetTokenProvider<ApplicationUser>)));
+    options.Tokens.PasswordResetTokenProvider = "PasswordReset";
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
+
+builder.Services.AddTransient<PasswordResetTokenProvider<ApplicationUser>>();
 
 if (builder.Environment.IsProduction())
 {
@@ -117,6 +122,8 @@ builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkFactory>();
 builder.Services.AddScoped<IAccountEmailConfirmationService, AccountEmailConfirmationService>();
+builder.Services.AddScoped<IPasswordResetLinkFactory, PasswordResetLinkFactory>();
+builder.Services.AddScoped<IAccountPasswordResetService, AccountPasswordResetService>();
 builder.Services.AddScoped<IUnconfirmedAccountCleanupService, UnconfirmedAccountCleanupService>();
 builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();

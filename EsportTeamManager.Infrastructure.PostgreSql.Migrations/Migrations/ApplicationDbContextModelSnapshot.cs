@@ -1057,6 +1057,12 @@ namespace EsportTeamManager.Infrastructure.PostgreSql.Migrations.Migrations
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
 
+                    b.Property<int>("PasswordResetEmailCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("PasswordResetEmailWindowStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PendingEmail")
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
@@ -1107,6 +1113,8 @@ namespace EsportTeamManager.Infrastructure.PostgreSql.Migrations.Migrations
                     b.ToTable("AspNetUsers", null, t =>
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_AccountStatus", "\"AccountStatus\" IN ('PendingConfirmation', 'Active', 'Suspended')");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_PasswordResetEmailCount", "\"PasswordResetEmailCount\" >= 0 AND \"PasswordResetEmailCount\" <= 3");
                         });
                 });
 

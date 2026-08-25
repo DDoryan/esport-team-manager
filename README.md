@@ -72,6 +72,15 @@ Le service expose `/health` pour le contrôle de disponibilité. Le Dockerfile a
 
 Sur Railway, `UseForwardedHeaders()` traite uniquement `X-Forwarded-Proto`. `UseHttpsRedirection()` reste actif hors Railway mais est ignoré lorsque `RAILWAY_PROJECT_ID` est défini : Railway termine TLS et assure lui-même la redirection HTTP publique, tandis que ses requêtes internes ne doivent pas chercher un port HTTPS Kestrel.
 
+
+### Déploiement manuel contrôlé
+
+La production Railway reste liée à `master`, mais l’auto-déploiement est désactivé. Après une CI `master` verte et une sauvegarde PostgreSQL vérifiée, le déploiement est déclenché depuis GitHub Actions avec le workflow **Déployer manuellement en production**.
+
+Le workflow refuse toute autre branche, restaure, compile, exécute les 111 tests, audite les dépendances, lance Railway en mode attaché, attend la fin réelle du déploiement puis vérifie `/health`. Le secret `RAILWAY_TOKEN` est limité au projet et à l’environnement de production et n’est jamais versionné.
+
+Sur l’offre Railway actuelle, les sauvegardes natives ne sont pas disponibles. Avant une migration à risque, créer une sauvegarde logique indépendante avec une version de `pg_dump` compatible avec PostgreSQL 18, vérifier qu’elle est non vide et lisible par `pg_restore`, puis conserver son empreinte SHA-256 hors Railway. QLT-008 doit automatiser cette sauvegarde et valider une restauration réelle.
+
 ## Compilation et tests
 
 ```powershell
