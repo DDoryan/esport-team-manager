@@ -67,6 +67,11 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
             return RegisterAccountResult.Failure(["Les informations fournies ne permettent pas de créer le compte."]);
         }
 
+        if (await EmailIsReservedAsync(user.Email!, utcNow, cancellationToken))
+        {
+            return RegisterAccountResult.Failure(["Cette adresse e-mail est déjà utilisée."]);
+        }
+
         IdentityResult identityResult = await _userManager.CreateAsync(user, request.Password);
 
         if (!identityResult.Succeeded)
@@ -106,6 +111,22 @@ public sealed class AccountRegistrationService : IAccountRegistrationService
         }
 
         return RegisterAccountResult.Success();
+    }
+
+    private async Task<bool> EmailIsReservedAsync(string email, DateTimeOffset currentDateUtc, CancellationToken cancellationToken)
+    {
+        string? normalizedEmail = _userManager.NormalizeEmail(email);
+
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return false;
+        }
+
+        ApplicationUser? reservationOwner = await _context.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(user => user.NormalizedPendingEmail == normalizedEmail, cancellationToken);
+
+        return reservationOwner?.HasValidPendingEmail(currentDateUtc) == true;
     }
 
     private async Task<LegalDocumentVersion?> GetCurrentTermsVersionAsync(CancellationToken cancellationToken)

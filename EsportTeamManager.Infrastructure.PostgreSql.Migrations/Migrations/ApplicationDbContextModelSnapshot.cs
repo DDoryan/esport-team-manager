@@ -1104,6 +1104,7 @@ namespace EsportTeamManager.Infrastructure.PostgreSql.Migrations.Migrations
                         .HasDatabaseName("EmailIndex");
 
                     b.HasIndex("NormalizedPendingEmail")
+                        .IsUnique()
                         .HasDatabaseName("IX_AspNetUsers_NormalizedPendingEmail");
 
                     b.HasIndex("NormalizedUserName")
@@ -1115,6 +1116,8 @@ namespace EsportTeamManager.Infrastructure.PostgreSql.Migrations.Migrations
                             t.HasCheckConstraint("CK_AspNetUsers_AccountStatus", "\"AccountStatus\" IN ('PendingConfirmation', 'Active', 'Suspended')");
 
                             t.HasCheckConstraint("CK_AspNetUsers_PasswordResetEmailCount", "\"PasswordResetEmailCount\" >= 0 AND \"PasswordResetEmailCount\" <= 3");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_PendingEmailConsistency", "(\"PendingEmail\" IS NULL AND \"NormalizedPendingEmail\" IS NULL AND \"PendingEmailExpiresAtUtc\" IS NULL) OR (\"PendingEmail\" IS NOT NULL AND \"NormalizedPendingEmail\" IS NOT NULL AND \"PendingEmailExpiresAtUtc\" IS NOT NULL)");
                         });
                 });
 

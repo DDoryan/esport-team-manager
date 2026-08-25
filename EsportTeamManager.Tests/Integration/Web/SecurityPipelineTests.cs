@@ -109,6 +109,39 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
         Assert.Contains("ReturnUrl=%2FActivities", redirectLocation);
     }
 
+    [Theory]
+    [InlineData("/Account/Profile", "ReturnUrl=%2FAccount%2FProfile")]
+    [InlineData("/Account/ChangePassword", "ReturnUrl=%2FAccount%2FChangePassword")]
+    [InlineData("/Account/ChangeEmail", "ReturnUrl=%2FAccount%2FChangeEmail")]
+    [InlineData("/Account/ChangeEmailRequested", "ReturnUrl=%2FAccount%2FChangeEmailRequested")]
+    public async Task ProtectedAccountPage_WhenUserIsAnonymous_RedirectsToLogin(string requestPath, string expectedReturnUrl)
+    {
+        using HttpClient client = CreateHttpsClient();
+
+        using HttpResponseMessage response = await client.GetAsync(requestPath);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        string? redirectLocation = response.Headers.Location?.OriginalString;
+
+        Assert.NotNull(redirectLocation);
+        Assert.Contains("/Account/Login", redirectLocation);
+        Assert.Contains(expectedReturnUrl, redirectLocation);
+    }
+
+    [Fact]
+    public async Task ConfirmEmailChange_WhenUserIsAnonymous_RemainsAccessible()
+    {
+        using HttpClient client = CreateHttpsClient();
+
+        using HttpResponseMessage response = await client.GetAsync("/Account/ConfirmEmailChange?token=invalid");
+        string content = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Confirmation impossible", content);
+        Assert.Contains("Le lien de changement d’adresse est invalide ou a expiré.", content);
+    }
+
     [Fact]
     public async Task Health_WhenRailwayForwardsHttps_DoesNotRedirect()
     {

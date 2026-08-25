@@ -1,0 +1,113 @@
+﻿@model EsportTeamManager.Web.Models.Account.ChangeEmailViewModel
+
+@{
+    ViewData["Title"] = "Modifier mon adresse e-mail";
+}
+
+<section class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-7">
+            <div class="card border-secondary shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h2 mb-3">Modifier mon adresse e-mail</h1>
+
+                    <p class="text-body-secondary">
+                        Saisissez votre mot de passe actuel, puis indiquez votre nouvelle adresse e-mail.
+                    </p>
+
+                    <form asp-controller="Account" asp-action="ChangeEmail" method="post">
+                        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="CurrentPassword" class="form-label"></label>
+
+                            <div class="input-group">
+                                <input asp-for="CurrentPassword" class="form-control password-field" autocomplete="current-password" />
+
+                                <button type="button" class="btn btn-outline-secondary password-toggle" data-password-target="CurrentPassword" aria-controls="CurrentPassword" aria-label="Afficher le mot de passe actuel" aria-pressed="false">
+                                    <svg class="eye-open d-none" width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+                                        <path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4S1.5 8 1.5 8Z" />
+                                        <circle cx="8" cy="8" r="2" />
+                                    </svg>
+
+                                    <svg class="eye-closed" width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+                                        <path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4S1.5 8 1.5 8Z" />
+                                        <path d="M2 2l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <span asp-validation-for="CurrentPassword" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="NewEmail" class="form-label"></label>
+                            <input asp-for="NewEmail" class="form-control" autocomplete="email" />
+                            <span asp-validation-for="NewEmail" class="text-danger"></span>
+                        </div>
+
+                        <p class="small text-body-secondary mb-3">
+                            Un lien valable pendant une heure sera envoyé à la nouvelle adresse. Votre adresse actuelle restera active jusqu’à la confirmation.
+                        </p>
+
+                        <div id="caps-lock-warning" class="alert alert-warning d-none py-2" role="status">
+                            Le verrouillage des majuscules est activé.
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            Envoyer le lien de confirmation
+                        </button>
+
+                        <p class="text-center mt-3 mb-0">
+                            <a asp-controller="Account" asp-action="Profile">← Retour au profil</a>
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        const passwordToggleButtons = document.querySelectorAll(".password-toggle");
+        const passwordFields = document.querySelectorAll(".password-field");
+        const capsLockWarning = document.getElementById("caps-lock-warning");
+
+        passwordToggleButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                const passwordField = document.getElementById(button.dataset.passwordTarget);
+
+                if (!passwordField) {
+                    return;
+                }
+
+                const passwordIsVisible = passwordField.type === "text";
+                const newVisibility = !passwordIsVisible;
+
+                passwordField.type = newVisibility ? "text" : "password";
+
+                button.querySelector(".eye-open").classList.toggle("d-none", !newVisibility);
+                button.querySelector(".eye-closed").classList.toggle("d-none", newVisibility);
+                button.setAttribute("aria-label", newVisibility ? "Masquer le mot de passe" : "Afficher le mot de passe");
+                button.setAttribute("aria-pressed", newVisibility.toString());
+            });
+        });
+
+        passwordFields.forEach(passwordField => {
+            const updateCapsLockWarning = event => {
+                capsLockWarning.classList.toggle("d-none", !event.getModifierState("CapsLock"));
+            };
+
+            passwordField.addEventListener("keydown", updateCapsLockWarning);
+            passwordField.addEventListener("keyup", updateCapsLockWarning);
+
+            passwordField.addEventListener("blur", () => {
+                capsLockWarning.classList.add("d-none");
+            });
+        });
+    </script>
+}
