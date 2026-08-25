@@ -11,6 +11,7 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
         builder.ToTable("AspNetUsers", tableBuilder =>
         {
             tableBuilder.HasCheckConstraint("CK_AspNetUsers_AccountStatus", "\"AccountStatus\" IN ('PendingConfirmation', 'Active', 'Suspended')");
+            tableBuilder.HasCheckConstraint("CK_AspNetUsers_PasswordResetEmailCount", "\"PasswordResetEmailCount\" >= 0 AND \"PasswordResetEmailCount\" <= 3");
         });
 
         builder.Property(user => user.Email).HasMaxLength(254).IsRequired();
@@ -25,6 +26,7 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
         builder.Property(user => user.AccountStatus).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(user => user.MinimumAgeDeclaredAtUtc).IsRequired();
         builder.Property(user => user.CreatedAtUtc).IsRequired();
+        builder.Property(user => user.PasswordResetEmailCount).IsRequired();
 
         builder.HasIndex(user => user.NormalizedEmail).IsUnique().HasDatabaseName("EmailIndex");
         builder.HasIndex(user => user.NormalizedUserName).IsUnique().HasDatabaseName("UserNameIndex");
