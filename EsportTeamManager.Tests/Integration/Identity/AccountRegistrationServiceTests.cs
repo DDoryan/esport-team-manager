@@ -139,6 +139,78 @@ public sealed class AccountRegistrationServiceTests
     }
 
     [Fact]
+    public async Task RegisterAsync_WhenEmailIsReservedByPendingChange_ReturnsFailure()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        IAccountRegistrationService registrationService = scope.ServiceProvider.GetRequiredService<IAccountRegistrationService>();
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        DateTimeOffset utcNow = DateTimeOffset.UtcNow;
+        ApplicationUser reservationOwner = new(Guid.NewGuid(), "owner@example.test", "ReservationOwner", "R01", utcNow, utcNow);
+
+        IdentityResult creationResult = await userManager.CreateAsync(reservationOwner, "Test123!");
+
+        Assert.True(creationResult.Succeeded);
+
+        string normalizedReservedEmail = userManager.NormalizeEmail("reserved@example.test") ?? throw new InvalidOperationException("L’adresse réservée n’a pas pu être normalisée.");
+
+        reservationOwner.ReservePendingEmail("reserved@example.test", normalizedReservedEmail, utcNow);
+
+        IdentityResult updateResult = await userManager.UpdateAsync(reservationOwner);
+
+        Assert.True(updateResult.Succeeded);
+
+        RegisterAccountRequest request = new(" RESERVED@EXAMPLE.TEST ", "ReservedPlayer", "R02", "Test123!", true, true);
+
+        RegisterAccountResult result = await registrationService.RegisterAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Cette adresse e-mail est déjà utilisée.", result.Errors);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenEmailReservationHasExpired_CreatesPendingUser()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        IAccountRegistrationService registrationService = scope.ServiceProvider.GetRequiredService<IAccountRegistrationService>();
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        DateTimeOffset utcNow = DateTimeOffset.UtcNow;
+        ApplicationUser reservationOwner = new(Guid.NewGuid(), "owner@example.test", "ReservationOwner", "R01", utcNow, utcNow);
+
+        IdentityResult creationResult = await userManager.CreateAsync(reservationOwner, "Test123!");
+
+        Assert.True(creationResult.Succeeded);
+
+        string normalizedReservedEmail = userManager.NormalizeEmail("released@example.test") ?? throw new InvalidOperationException("L’adresse réservée n’a pas pu être normalisée.");
+
+        reservationOwner.ReservePendingEmail("released@example.test", normalizedReservedEmail, utcNow.AddHours(-2));
+
+        IdentityResult updateResult = await userManager.UpdateAsync(reservationOwner);
+
+        Assert.True(updateResult.Succeeded);
+
+        RegisterAccountRequest request = new("released@example.test", "ReleasedPlayer", "R02", "Test123!", true, true);
+
+        RegisterAccountResult result = await registrationService.RegisterAsync(request);
+        ApplicationUser? registeredUser = await userManager.FindByEmailAsync(request.Email);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(registeredUser);
+        Assert.Equal(AccountStatus.PendingConfirmation, registeredUser.AccountStatus);
+    }
+
+    [Fact]
     public async Task RegisterAsync_WhenTermsAreAccepted_StoresCurrentTermsAcceptance()
     {
         await using SqliteTestDatabase database = new();

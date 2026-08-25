@@ -118,6 +118,49 @@ public sealed class ApplicationUser : IdentityUser<Guid>
         PasswordResetEmailCount++;
     }
 
+    public void ReservePendingEmail(string email, string normalizedEmail, DateTimeOffset requestedAtUtc)
+    {
+        string pendingEmail = email.Trim();
+
+        if (pendingEmail.Length == 0 || pendingEmail.Length > 254)
+        {
+            throw new DomainException("The pending email address is required and cannot exceed 254 characters.");
+        }
+
+        string normalizedPendingEmail = normalizedEmail.Trim();
+
+        if (normalizedPendingEmail.Length == 0 || normalizedPendingEmail.Length > 254)
+        {
+            throw new DomainException("The normalized pending email address is required and cannot exceed 254 characters.");
+        }
+
+        if (string.Equals(NormalizedEmail, normalizedPendingEmail, StringComparison.Ordinal))
+        {
+            throw new DomainException("The pending email address must differ from the current email address.");
+        }
+
+        PendingEmail = pendingEmail;
+        NormalizedPendingEmail = normalizedPendingEmail;
+        PendingEmailExpiresAtUtc = requestedAtUtc.ToUniversalTime().AddHours(1);
+    }
+
+    public bool HasValidPendingEmail(DateTimeOffset currentDateUtc)
+    {
+        DateTimeOffset normalizedCurrentDateUtc = currentDateUtc.ToUniversalTime();
+
+        return !string.IsNullOrWhiteSpace(PendingEmail)
+            && !string.IsNullOrWhiteSpace(NormalizedPendingEmail)
+            && PendingEmailExpiresAtUtc is not null
+            && normalizedCurrentDateUtc < PendingEmailExpiresAtUtc.Value;
+    }
+
+    public void ClearPendingEmail()
+    {
+        PendingEmail = null;
+        NormalizedPendingEmail = null;
+        PendingEmailExpiresAtUtc = null;
+    }
+
     public void MarkAsConfirmed(DateTimeOffset confirmedAtUtc)
     {
         AccountStatus = AccountStatus.Active;

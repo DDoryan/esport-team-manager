@@ -12,6 +12,7 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
         {
             tableBuilder.HasCheckConstraint("CK_AspNetUsers_AccountStatus", "\"AccountStatus\" IN ('PendingConfirmation', 'Active', 'Suspended')");
             tableBuilder.HasCheckConstraint("CK_AspNetUsers_PasswordResetEmailCount", "\"PasswordResetEmailCount\" >= 0 AND \"PasswordResetEmailCount\" <= 3");
+            tableBuilder.HasCheckConstraint("CK_AspNetUsers_PendingEmailConsistency", "(\"PendingEmail\" IS NULL AND \"NormalizedPendingEmail\" IS NULL AND \"PendingEmailExpiresAtUtc\" IS NULL) OR (\"PendingEmail\" IS NOT NULL AND \"NormalizedPendingEmail\" IS NOT NULL AND \"PendingEmailExpiresAtUtc\" IS NOT NULL)");
         });
 
         builder.Property(user => user.Email).HasMaxLength(254).IsRequired();
@@ -30,6 +31,8 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
 
         builder.HasIndex(user => user.NormalizedEmail).IsUnique().HasDatabaseName("EmailIndex");
         builder.HasIndex(user => user.NormalizedUserName).IsUnique().HasDatabaseName("UserNameIndex");
-        builder.HasIndex(user => user.NormalizedPendingEmail).HasDatabaseName("IX_AspNetUsers_NormalizedPendingEmail");
+        builder.HasIndex(user => user.NormalizedPendingEmail).IsUnique().HasDatabaseName("IX_AspNetUsers_NormalizedPendingEmail");
+
+        builder.Property(user => user.PendingEmailExpiresAtUtc);
     }
 }

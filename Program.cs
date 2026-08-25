@@ -70,11 +70,15 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 
     options.Tokens.ProviderMap.Add("PasswordReset", new TokenProviderDescriptor(typeof(PasswordResetTokenProvider<ApplicationUser>)));
     options.Tokens.PasswordResetTokenProvider = "PasswordReset";
+
+    options.Tokens.ProviderMap.Add("EmailChange", new TokenProviderDescriptor(typeof(EmailChangeTokenProvider<ApplicationUser>)));
+    options.Tokens.ChangeEmailTokenProvider = "EmailChange";
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
 builder.Services.AddTransient<PasswordResetTokenProvider<ApplicationUser>>();
+builder.Services.AddTransient<EmailChangeTokenProvider<ApplicationUser>>();
 
 if (builder.Environment.IsProduction())
 {
@@ -126,6 +130,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IEmailConfirmationLinkFactory, EmailConfirmationLinkFactory>();
+builder.Services.AddScoped<IEmailChangeLinkFactory, EmailChangeLinkFactory>();
+builder.Services.AddScoped<IAccountEmailChangeService, AccountEmailChangeService>();
 builder.Services.AddScoped<IAccountEmailConfirmationService, AccountEmailConfirmationService>();
 builder.Services.AddScoped<IPasswordResetLinkFactory, PasswordResetLinkFactory>();
 builder.Services.AddScoped<IAccountPasswordResetService, AccountPasswordResetService>();

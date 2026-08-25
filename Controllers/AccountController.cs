@@ -14,14 +14,16 @@ public sealed class AccountController : Controller
     private readonly IAccountEmailConfirmationService _accountEmailConfirmationService;
     private readonly IAccountPasswordResetService _accountPasswordResetService;
     private readonly IAccountProfileService _accountProfileService;
+    private readonly IAccountEmailChangeService _accountEmailChangeService;
 
-    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService, IAccountPasswordResetService accountPasswordResetService, IAccountProfileService accountProfileService)
+    public AccountController(IAccountRegistrationService accountRegistrationService, IAccountAuthenticationService accountAuthenticationService, IAccountEmailConfirmationService accountEmailConfirmationService, IAccountPasswordResetService accountPasswordResetService, IAccountProfileService accountProfileService, IAccountEmailChangeService accountEmailChangeService)
     {
         _accountRegistrationService = accountRegistrationService;
         _accountAuthenticationService = accountAuthenticationService;
         _accountEmailConfirmationService = accountEmailConfirmationService;
         _accountPasswordResetService = accountPasswordResetService;
         _accountProfileService = accountProfileService;
+        _accountEmailChangeService = accountEmailChangeService;
     }
 
     [AllowAnonymous]
@@ -256,6 +258,62 @@ public sealed class AccountController : Controller
         TempData["ProfileSuccessMessage"] = "Votre mot de passe a été modifié. Les autres sessions ont été déconnectées.";
 
         return RedirectToAction(nameof(Profile));
+    }
+
+    [Authorize]
+    [HttpGet]
+    public IActionResult ChangeEmail()
+    {
+        return View(new ChangeEmailViewModel());
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> ChangeEmail(ChangeEmailViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        if (!TryGetCurrentUserId(out Guid userId))
+        {
+            return Challenge();
+        }
+
+        ChangeAccountEmailRequest request = new(userId, model.CurrentPassword, model.NewEmail);
+        ChangeAccountEmailResult result = await _accountEmailChangeService.RequestEmailChangeAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(model);
+        }
+
+        return RedirectToAction(nameof(ChangeEmailRequested));
+    }
+
+    [Authorize]
+    [HttpGet]
+    public IActionResult ChangeEmailRequested()
+    {
+        return View();
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public async Task<IActionResult> ConfirmEmailChange(Guid userId, string token, CancellationToken cancellationToken)
+    {
+        ChangeAccountEmailResult result = await _accountEmailChangeService.ConfirmEmailChangeAsync(userId, token, cancellationToken);
+        string message = result.Succeeded
+            ? "Votre adresse e-mail a été modifiée. Vous pouvez désormais l’utiliser pour vous connecter."
+            : result.Errors.FirstOrDefault() ?? "Le lien de changement d’adresse est invalide ou a expiré.";
+
+        return View(new ConfirmEmailChangeViewModel(result.Succeeded, message));
     }
 
     [AllowAnonymous]
