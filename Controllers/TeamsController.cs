@@ -3,6 +3,7 @@ using EsportTeamManager.Application.Teams;
 using EsportTeamManager.Web.Models.Teams;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using EsportTeamManager.Web.Navigation;
 
 namespace EsportTeamManager.Web.Controllers;
 
@@ -28,12 +29,41 @@ public sealed class TeamsController : Controller
 
         IReadOnlyCollection<UserTeamSummary> teams = await _userTeamService.GetTeamsForUserAsync(userId.Value, cancellationToken);
 
-        if (teams.Count == 1)
+        if (teams.Count == 0)
         {
-            return RedirectToAction("Index", "Activities", new { teamId = teams.Single().TeamId });
+            LastVisitedTeamCookie.Delete(Response);
+
+            return RedirectToAction(nameof(Index));
         }
 
-        return RedirectToAction(nameof(Index));
+        if (teams.Count == 1)
+        {
+            UserTeamSummary team = teams.Single();
+
+            LastVisitedTeamCookie.Write(Response, team.TeamId);
+
+            return RedirectToAction("Index", "Activities", new { teamId = team.TeamId });
+        }
+
+        Guid? lastVisitedTeamId = LastVisitedTeamCookie.Read(Request);
+
+        if (!lastVisitedTeamId.HasValue)
+        {
+            return RedirectToAction(nameof(Index));
+        }
+
+        UserTeamSummary? lastVisitedTeam = teams.SingleOrDefault(team => team.TeamId == lastVisitedTeamId.Value);
+
+        if (lastVisitedTeam is null)
+        {
+            LastVisitedTeamCookie.Delete(Response);
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        LastVisitedTeamCookie.Write(Response, lastVisitedTeam.TeamId);
+
+        return RedirectToAction("Index", "Activities", new { teamId = lastVisitedTeam.TeamId });
     }
 
     [HttpGet]

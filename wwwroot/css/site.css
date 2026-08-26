@@ -31,44 +31,51 @@ html.app-local-scroll-page::-webkit-scrollbar
     height: 0;
 }
 
-.app-scroll-region::-webkit-scrollbar
+.app-scroll-region::-webkit-scrollbar,
+.app-team-selector-menu::-webkit-scrollbar
 {
     width: 0.75rem;
     height: 0.75rem;
 }
 
-.app-scroll-region::-webkit-scrollbar-button
+.app-scroll-region::-webkit-scrollbar-button,
+.app-team-selector-menu::-webkit-scrollbar-button
 {
     display: none;
     width: 0;
     height: 0;
 }
 
-.app-scroll-region::-webkit-scrollbar-track
+.app-scroll-region::-webkit-scrollbar-track,
+.app-team-selector-menu::-webkit-scrollbar-track
 {
     background: var(--app-surface);
 }
 
-.app-scroll-region::-webkit-scrollbar-thumb
+.app-scroll-region::-webkit-scrollbar-thumb,
+.app-team-selector-menu::-webkit-scrollbar-thumb
 {
     border: 2px solid var(--app-surface);
     border-radius: 999px;
     background: var(--app-navigation-muted);
 }
 
-.app-scroll-region::-webkit-scrollbar-thumb:hover
+.app-scroll-region::-webkit-scrollbar-thumb:hover,
+.app-team-selector-menu::-webkit-scrollbar-thumb:hover
 {
     background: var(--app-navigation-muted-hover);
 }
 
-.app-scroll-region::-webkit-scrollbar-corner
+.app-scroll-region::-webkit-scrollbar-corner,
+.app-team-selector-menu::-webkit-scrollbar-corner
 {
     background: var(--app-surface);
 }
 
 @supports (-moz-appearance: none)
 {
-    .app-scroll-region
+    .app-scroll-region,
+    .app-team-selector-menu
     {
         scrollbar-width: thin;
         scrollbar-color: var(--app-navigation-muted) var(--app-surface);
