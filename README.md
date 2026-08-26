@@ -7,11 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** TEAM-003 le 26 août 2026, en 4 h pour 4 h estimées.
-- **Avancement :** 26 éléments terminés sur 60 et 172 h estimées restantes.
-- **Validation :** 144 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #84 verte et production Railway validée après le déploiement manuel #6.
-- **Prochain ticket :** TEAM-009 — Naviguer entre ses équipes.
-- **Projection :** déficit maintenu à 32 h au 6 septembre et MVP complet projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
+- **Dernier ticket clôturé :** TEAM-009 le 26 août 2026, en 1 h 30 pour 4 h estimées.
+- **Avancement :** 27 éléments terminés sur 60 et 168 h estimées restantes.
+- **Validation :** 152 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #87 verte et production Railway validée après le déploiement manuel #7.
+- **Prochain ticket :** TEAM-004 — Inviter un compte par pseudo et tag.
+- **Projection :** déficit ramené à 29 h 30 au 6 septembre et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
 
 ## Architecture
 
@@ -31,6 +31,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - changement sécurisé d’adresse électronique après réauthentification, réservation unique d’une heure et confirmation à usage unique ;
 - consultation sécurisée de la gestion d’équipe, membres actifs, historique d’appartenance conservé et navigation d’équipe partagée ;
 - tableau des membres sur ordinateur et cartes responsive sur mobile.
+- navigation sécurisée entre zéro, une ou plusieurs équipes, avec sélecteur partagé et dernière équipe accessible mémorisée dans un cookie minimal protégé ;
 
 ## Prérequis locaux
 
@@ -90,7 +91,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après TEAM-003 : six projets compilés sans erreur ; 144 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
+Après TEAM-009 : six projets compilés sans erreur ; 152 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
 
 ### Exécution locale des tests avec Smart App Control
 
@@ -134,18 +135,3 @@ Le dossier documentaire de référence comprend notamment :
 - journal de veille et changelog.
 
 Les mentions légales, CGU, politique de confidentialité et registre des traitements RGPD doivent être créés pendant le P1 dès stabilisation des traitements, avant toute ouverture publique élargie.
-
-## Point de clôture TEAM-003
-
-TEAM-003 est fusionné par la PR #31 et validé par 144 tests. Les CI #82 et #84, le déploiement manuel #6, Railway, `/health` et la recette de production desktop/mobile sont réussis. Aucune migration n’était requise.
-
-- consultation autorisée uniquement pour une appartenance active ;
-- anciens membres refusés et périodes closes conservées sans onglet public ;
-- réintégration projetée depuis la nouvelle période active ;
-- identité, rôle, date d’entrée et statut Propriétaire affichés ;
-- sélecteur d’équipe et onglets Calendrier / Gestion d’équipe dans l’en-tête partagé ;
-- tableau desktop transformé en cartes mobiles sans débordement horizontal ;
-- empreintes SHA-256 distante et locale de la sauvegarde identiques ;
-- temps réel : 4 h pour 4 h estimées.
-
-L’égalité des empreintes valide l’intégrité du transfert, pas une restauration. La restauration réelle de la base et d’une image reste planifiée dans QLT-008 après STR-004 et TEAM-002.
