@@ -148,5 +148,12 @@ public sealed class TeamNavigationViewComponentTests
         {
             return Task.FromResult(_teams);
         }
+
+        public Task<InviteTeamMemberResult> InviteMemberAsync(InviteTeamMemberRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(InviteTeamMemberResult.Denied());
+        }
     }
 }

@@ -14,9 +14,13 @@ public sealed class TeamManagementDetails
 
     public bool CurrentUserIsOwner { get; }
 
+    public bool CurrentUserCanInviteMembers { get; }
+
+    public IReadOnlyCollection<TeamRoleOption> AvailableInvitationRoles { get; }
+
     public IReadOnlyCollection<TeamMemberSummary> Members { get; }
 
-    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, IReadOnlyCollection<TeamMemberSummary> members)
+    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamRoleOption> availableInvitationRoles, IReadOnlyCollection<TeamMemberSummary> members)
     {
         TeamId = teamId;
         Name = name;
@@ -24,6 +28,8 @@ public sealed class TeamManagementDetails
         Description = description;
         TimeZoneId = timeZoneId;
         CurrentUserIsOwner = currentUserIsOwner;
+        CurrentUserCanInviteMembers = currentUserCanInviteMembers;
+        AvailableInvitationRoles = availableInvitationRoles;
         Members = members;
     }
 }

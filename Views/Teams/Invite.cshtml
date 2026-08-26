@@ -1,0 +1,80 @@
+﻿@using EsportTeamManager.Web.Models.Teams
+
+@model InviteTeamMemberViewModel
+
+@{
+    ViewData["Title"] = $"Inviter un membre — {Model.TeamName}";
+}
+
+<section class="team-invite-page" aria-labelledby="team-invite-title">
+    <header class="team-invite-header mb-4">
+        <a class="team-invite-back-link"
+           asp-controller="Teams"
+           asp-action="Management"
+           asp-route-teamId="@Model.TeamId">
+            <span aria-hidden="true">←</span>
+            Retour à @Model.TeamName
+        </a>
+
+        <h1 id="team-invite-title" class="mb-2">Inviter un membre</h1>
+        <p class="text-body-secondary mb-0">
+            Saisissez l’identité exacte du compte et choisissez son rôle dans l’équipe.
+        </p>
+    </header>
+
+    <section class="card team-invite-panel" aria-labelledby="team-invite-form-title">
+        <div class="card-body">
+            <h2 id="team-invite-form-title" class="h3 mb-4">Nouvelle invitation</h2>
+
+            <form asp-controller="Teams" asp-action="Invite" method="post">
+                <input asp-for="TeamId" type="hidden" />
+
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                <div class="mb-4">
+                    <label asp-for="RecipientIdentity" class="form-label"></label>
+                    <input asp-for="RecipientIdentity"
+                           class="form-control"
+                           autocomplete="off"
+                           autocapitalize="none"
+                           spellcheck="false"
+                           placeholder="Pseudo#Tag"
+                           aria-describedby="recipient-identity-help" />
+                    <div id="recipient-identity-help" class="form-text">
+                        Utilisez le pseudo et le tag exacts du compte, par exemple Joueur#A01.
+                    </div>
+                    <span asp-validation-for="RecipientIdentity" class="text-danger"></span>
+                </div>
+
+                <div class="mb-4">
+                    <label asp-for="ProposedTeamRoleId" class="form-label"></label>
+                    <select asp-for="ProposedTeamRoleId" class="form-select">
+                        <option value="0">Sélectionner un rôle</option>
+
+                        @foreach (TeamRoleOptionViewModel role in Model.AvailableRoles)
+                        {
+                            <option value="@role.TeamRoleId">@role.Label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="ProposedTeamRoleId" class="text-danger"></span>
+                </div>
+
+                <div class="team-invite-actions">
+                    <button type="submit" class="btn btn-primary">Envoyer l’invitation</button>
+
+                    <a class="btn btn-outline-secondary"
+                       asp-controller="Teams"
+                       asp-action="Management"
+                       asp-route-teamId="@Model.TeamId">
+                        Annuler
+                    </a>
+                </div>
+            </form>
+        </div>
+    </section>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

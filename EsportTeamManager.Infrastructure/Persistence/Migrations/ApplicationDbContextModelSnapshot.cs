@@ -362,10 +362,11 @@ namespace EsportTeamManager.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProposedTeamRoleId");
 
-                    b.HasIndex("SenderUserId");
-
                     b.HasIndex("RecipientUserId", "Status")
                         .HasDatabaseName("IX_Invitations_RecipientUserId_Status");
+
+                    b.HasIndex("SenderUserId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_Invitations_SenderUserId_CreatedAtUtc");
 
                     b.HasIndex("TeamId", "RecipientUserId")
                         .IsUnique()
