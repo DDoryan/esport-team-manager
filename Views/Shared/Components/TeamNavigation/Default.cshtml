@@ -1,0 +1,95 @@
+﻿@using EsportTeamManager.Web.Models.Navigation
+@model TeamNavigationViewModel
+
+@{
+    string? currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    bool teamsNavigationIsActive = Model.ActiveTeam is null && string.Equals(currentController, "Teams", StringComparison.OrdinalIgnoreCase);
+}
+
+@if (Model.ActiveTeam is null)
+{
+    <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+            <a class="nav-link app-main-navigation-link @(teamsNavigationIsActive ? "app-main-navigation-link-active" : string.Empty)"
+               asp-controller="Teams"
+               asp-action="Index"
+               aria-current="@(teamsNavigationIsActive ? "page" : null)">
+                Mes équipes
+            </a>
+        </li>
+
+        <li class="nav-item">
+            <a class="nav-link app-main-navigation-link"
+               asp-controller="Teams"
+               asp-action="Entry">
+                Calendrier
+            </a>
+        </li>
+    </ul>
+}
+else
+{
+    string activeTeamLabel = string.IsNullOrWhiteSpace(Model.ActiveTeam.Tag) ? Model.ActiveTeam.Name : $"{Model.ActiveTeam.Name} · {Model.ActiveTeam.Tag}";
+
+    <div class="app-team-navigation me-auto">
+        <div class="dropdown app-team-selector">
+            <button class="btn btn-outline-secondary dropdown-toggle app-team-selector-button"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    aria-label="Changer d’équipe. Équipe actuelle : @activeTeamLabel">
+                @activeTeamLabel
+            </button>
+
+            <ul class="dropdown-menu app-team-selector-menu">
+                @foreach (TeamNavigationItemViewModel team in Model.Teams)
+                {
+                    string teamLabel = string.IsNullOrWhiteSpace(team.Tag) ? team.Name : $"{team.Name} · {team.Tag}";
+                    bool teamIsActive = team.TeamId == Model.ActiveTeam.TeamId;
+
+                    <li>
+                        <a class="dropdown-item @(teamIsActive ? "active" : string.Empty)"
+                           asp-controller="Activities"
+                           asp-action="Index"
+                           asp-route-teamId="@team.TeamId"
+                           aria-current="@(teamIsActive ? "true" : null)">
+                            @teamLabel
+                        </a>
+                    </li>
+                }
+
+                <li><hr class="dropdown-divider" /></li>
+
+                <li>
+                    <a class="dropdown-item"
+                       asp-controller="Teams"
+                       asp-action="Index">
+                        Mes équipes
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <ul class="navbar-nav app-team-navigation-links">
+            <li class="nav-item">
+                <a class="nav-link app-main-navigation-link @(Model.CalendarIsActive ? "app-main-navigation-link-active" : string.Empty)"
+                   asp-controller="Activities"
+                   asp-action="Index"
+                   asp-route-teamId="@Model.ActiveTeam.TeamId"
+                   aria-current="@(Model.CalendarIsActive ? "page" : null)">
+                    Calendrier
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link app-main-navigation-link @(Model.ManagementIsActive ? "app-main-navigation-link-active" : string.Empty)"
+                   asp-controller="Teams"
+                   asp-action="Management"
+                   asp-route-teamId="@Model.ActiveTeam.TeamId"
+                   aria-current="@(Model.ManagementIsActive ? "page" : null)">
+                    Gestion d’équipe
+                </a>
+            </li>
+        </ul>
+    </div>
+}

@@ -1,14 +1,14 @@
 ﻿@model RepriseWeb.ViewModels.Activities.TeamCalendarViewModel
 
 @{
-    ViewData["Title"] = $"Calendrier — {Model.TeamName}";
+    ViewData["Title"] = Model.TeamName;
     string eventsUrl = Url.Action("Events", "Activities", new { teamId = Model.TeamId }) ?? string.Empty;
 }
 
 <section class="team-calendar-page" aria-labelledby="calendar-title">
     <header class="team-calendar-header mb-4">
         <div>
-            <h1 id="calendar-title" class="mb-2">Calendrier — @Model.TeamName</h1>
+            <h1 id="calendar-title" class="mb-2">@Model.TeamName</h1>
             <p class="text-body-secondary mb-0">
                 Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
             </p>

@@ -1,8 +1,6 @@
 ﻿@{
     string? currentController = ViewContext.RouteData.Values["controller"]?.ToString();
     string? currentAction = ViewContext.RouteData.Values["action"]?.ToString();
-    bool teamsNavigationIsActive = string.Equals(currentController, "Teams", StringComparison.OrdinalIgnoreCase);
-    bool calendarNavigationIsActive = string.Equals(currentController, "Activities", StringComparison.OrdinalIgnoreCase);
     bool profileNavigationIsActive = string.Equals(currentController, "Account", StringComparison.OrdinalIgnoreCase) && (string.Equals(currentAction, "Profile", StringComparison.OrdinalIgnoreCase) || string.Equals(currentAction, "ChangePassword", StringComparison.OrdinalIgnoreCase));
 }
 <!DOCTYPE html>
@@ -34,18 +32,14 @@
                 </button>
 
                 <div class="collapse navbar-collapse" id="main-navigation">
-                    <ul class="navbar-nav me-auto">
-                        @if (User.Identity?.IsAuthenticated == true)
-                        {
-                            <li class="nav-item">
-                                <a class="nav-link app-main-navigation-link @(teamsNavigationIsActive ? "app-main-navigation-link-active" : string.Empty)" asp-area="" asp-controller="Teams" asp-action="Index" aria-current="@(teamsNavigationIsActive ? "page" : null)">Mes équipes</a>
-                            </li>
-
-                            <li class="nav-item">
-                                <a class="nav-link app-main-navigation-link @(calendarNavigationIsActive ? "app-main-navigation-link-active" : string.Empty)" asp-area="" asp-controller="Teams" asp-action="Entry" aria-current="@(calendarNavigationIsActive ? "page" : null)">Calendrier</a>
-                            </li>
-                        }
-                    </ul>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        @await Component.InvokeAsync("TeamNavigation")
+                    }
+                    else
+                    {
+                        <div class="me-auto"></div>
+                    }
 
                     <ul class="navbar-nav align-items-lg-center gap-lg-2">
                         @if (User.Identity?.IsAuthenticated == true)

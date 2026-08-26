@@ -1,7 +1,8 @@
 ﻿@model RepriseWeb.ViewModels.Activities.EditActivityViewModel
 
 @{
-    ViewData["Title"] = $"Modifier l’activité — {Model.TypeLabel}";
+    string activityTitle = string.IsNullOrWhiteSpace(Model.Subtitle) ? Model.TypeLabel : $"{Model.TypeLabel} — {Model.Subtitle}";
+    ViewData["Title"] = activityTitle;
     ViewData["HtmlClass"] = "activity-edit-fixed-page app-local-scroll-page";
     bool matchSectionIsVisible = Model.TypeCode is "Pracc" or "OfficialMatch";
     string statusClass = Model.StatusLabel switch
@@ -26,7 +27,7 @@
 <section class="activity-edit-page app-scroll-region" aria-labelledby="activity-edit-title">
     <header class="activity-edit-header">
         <div>
-            <h1 id="activity-edit-title" class="mb-2">Modifier l’activité — @Model.TypeLabel</h1>
+            <h1 id="activity-edit-title" class="mb-2">@activityTitle</h1>
             <p class="text-body-secondary mb-0">
                 Dernière modification le @Model.UpdatedAtUtc.ToString("dd/MM/yyyy à HH:mm") UTC
             </p>
