@@ -23,6 +23,7 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
         builder.Property(invitation => invitation.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(invitation => invitation.CreatedAtUtc).IsRequired();
 
+        builder.HasIndex(invitation => new { invitation.SenderUserId, invitation.CreatedAtUtc }).HasDatabaseName("IX_Invitations_SenderUserId_CreatedAtUtc");
         builder.HasIndex(invitation => new { invitation.RecipientUserId, invitation.Status }).HasDatabaseName("IX_Invitations_RecipientUserId_Status");
         builder.HasIndex(invitation => new { invitation.TeamId, invitation.Status }).HasDatabaseName("IX_Invitations_TeamId_Status");
         builder.HasIndex(invitation => new { invitation.TeamId, invitation.RecipientUserId }).IsUnique().HasFilter("\"Status\" = 'Pending'").HasDatabaseName("UX_Invitations_PendingRecipient");

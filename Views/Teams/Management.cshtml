@@ -19,6 +19,16 @@
                     <h2 id="team-members-title" class="h3 mb-1">Membres</h2>
                     <p class="text-body-secondary mb-0">@memberCountLabel</p>
                 </div>
+                @if (Model.CurrentUserCanInviteMembers)
+                {
+                    <a class="btn btn-primary team-members-invite-button"
+                       asp-controller="Teams"
+                       asp-action="Invite"
+                       asp-route-teamId="@Model.TeamId">
+                        <span aria-hidden="true">+</span>
+                        Inviter un membre
+                    </a>
+                }
             </header>
 
             <div class="team-members-desktop">

@@ -36,10 +36,10 @@ public sealed class SecurityPipelineTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task HomePost_WithoutAntiforgeryToken_ReturnsBadRequest()
+    public async Task LoginPost_WithoutAntiforgeryToken_ReturnsBadRequest()
     {
         using HttpClient client = CreateHttpsClient();
-        using HttpRequestMessage request = new(HttpMethod.Post, "/Home/Index");
+        using HttpRequestMessage request = new(HttpMethod.Post, "/Account/Login");
 
         using HttpResponseMessage response = await client.SendAsync(request);
 

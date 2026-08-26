@@ -103,12 +103,92 @@ public sealed class TeamsController : Controller
             return Forbid();
         }
 
-        IReadOnlyCollection<TeamMemberViewModel> members = details.Members
-            .Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.RoleLabel, member.IsOwner, member.JoinedAtUtc))
-            .ToArray();
-        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, members);
+        IReadOnlyCollection<TeamMemberViewModel> members =
+        [
+            .. details.Members.Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.RoleLabel, member.IsOwner, member.JoinedAtUtc))
+        ];
+        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, members);
 
         return View(viewModel);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Invite(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, teamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserCanInviteMembers)
+        {
+            return Forbid();
+        }
+
+        InviteTeamMemberViewModel viewModel = BuildInviteViewModel(details);
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Invite(InviteTeamMemberViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (model.TeamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, model.TeamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserCanInviteMembers)
+        {
+            return Forbid();
+        }
+
+        InviteTeamMemberViewModel viewModel = BuildInviteViewModel(details, model);
+
+        if (!ModelState.IsValid)
+        {
+            return View(viewModel);
+        }
+
+        InviteTeamMemberRequest request = new(userId.Value, viewModel.TeamId, viewModel.RecipientIdentity, viewModel.ProposedTeamRoleId);
+        InviteTeamMemberResult result = await _userTeamService.InviteMemberAsync(request, cancellationToken);
+
+        if (result.AccessDenied)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(viewModel);
+        }
+
+        TempData["SuccessMessage"] = "L’invitation a été envoyée avec succès.";
+
+        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId });
     }
 
     [HttpPost]
@@ -148,12 +228,27 @@ public sealed class TeamsController : Controller
         return RedirectToAction("Index", "Activities", new { teamId = result.TeamId.Value });
     }
 
+    private static InviteTeamMemberViewModel BuildInviteViewModel(TeamManagementDetails details, InviteTeamMemberViewModel? model = null)
+    {
+        InviteTeamMemberViewModel viewModel = model ?? new InviteTeamMemberViewModel();
+
+        viewModel.TeamId = details.TeamId;
+        viewModel.TeamName = details.Name;
+        viewModel.AvailableRoles =
+        [
+            .. details.AvailableInvitationRoles.Select(role => new TeamRoleOptionViewModel(role.TeamRoleId, role.Label))
+        ];
+
+        return viewModel;
+    }
+
     private async Task<TeamsIndexViewModel> BuildIndexViewModelAsync(Guid userId, CreateTeamViewModel createTeam, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<UserTeamSummary> teams = await _userTeamService.GetTeamsForUserAsync(userId, cancellationToken);
-        IReadOnlyCollection<TeamCardViewModel> teamCards = teams
-            .Select(team => new TeamCardViewModel(team.TeamId, team.Name, team.Tag, team.RoleLabel, team.IsOwner, CreateInitials(team.Name, team.Tag)))
-            .ToArray();
+        IReadOnlyCollection<TeamCardViewModel> teamCards =
+        [
+            .. teams.Select(team => new TeamCardViewModel(team.TeamId, team.Name, team.Tag, team.RoleLabel, team.IsOwner, CreateInitials(team.Name, team.Tag)))
+        ];
 
         return new TeamsIndexViewModel(teamCards, createTeam);
     }
