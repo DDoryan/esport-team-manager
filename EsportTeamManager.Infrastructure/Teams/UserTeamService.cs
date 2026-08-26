@@ -97,6 +97,57 @@ public sealed class UserTeamService : IUserTeamService
         return CreateTeamResult.Success(teamId);
     }
 
+    public async Task<TeamManagementDetails?> GetManagementDetailsAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (userId == Guid.Empty || teamId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var teamData = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == teamId && membership.UserId == userId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new
+            {
+                team.TeamId,
+                team.OwnerUserId,
+                team.Name,
+                team.Tag,
+                team.Description,
+                team.TimeZoneId
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (teamData is null)
+        {
+            return null;
+        }
+
+        IReadOnlyCollection<TeamMemberSummary> members = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == teamId && membership.Status == MembershipStatus.Active && membership.UserId.HasValue)
+            .Join(_context.Users, membership => membership.UserId!.Value, user => user.Id, (membership, user) => new
+            {
+                Membership = membership,
+                User = user
+            })
+            .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new
+            {
+                item.Membership,
+                item.User,
+                Role = role
+            })
+            .OrderByDescending(item => item.User.Id == teamData.OwnerUserId)
+            .ThenBy(item => item.User.Pseudo)
+            .ThenBy(item => item.User.Tag)
+            .Select(item => new TeamMemberSummary(item.Membership.TeamMembershipId, item.User.Pseudo, item.User.Tag, item.Role.Label, item.User.Id == teamData.OwnerUserId, item.Membership.JoinedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, teamData.OwnerUserId == userId, members);
+    }
+
     public async Task<IReadOnlyCollection<UserTeamSummary>> GetTeamsForUserAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

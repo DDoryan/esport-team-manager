@@ -1,0 +1,99 @@
+﻿@using EsportTeamManager.Web.Models.Teams
+
+@model TeamManagementViewModel
+
+@{
+    ViewData["Title"] = Model.Name;
+    string memberCountLabel = Model.Members.Count == 1 ? "1 membre actif" : $"{Model.Members.Count} membres actifs";
+}
+
+<section class="team-management-page" aria-labelledby="team-management-title">
+    <header class="mb-4">
+        <h1 id="team-management-title" class="mb-0">@Model.Name</h1>
+    </header>
+
+    <section class="card team-members-panel" aria-labelledby="team-members-title">
+        <div class="card-body">
+            <header class="team-members-header mb-3">
+                <div>
+                    <h2 id="team-members-title" class="h3 mb-1">Membres</h2>
+                    <p class="text-body-secondary mb-0">@memberCountLabel</p>
+                </div>
+            </header>
+
+            <div class="team-members-desktop">
+                <div class="table-responsive">
+                    <table class="table team-members-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Identité</th>
+                                <th scope="col">Rôle</th>
+                                <th scope="col">Entrée</th>
+                                <th scope="col">Statut</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach (TeamMemberViewModel member in Model.Members)
+                            {
+                                <tr>
+                                    <td>
+                                        <span class="team-member-identity">
+                                            <strong>@member.Pseudo</strong>
+                                            <span class="text-body-secondary">#@member.Tag</span>
+                                        </span>
+                                    </td>
+                                    <td>@member.RoleLabel</td>
+                                    <td>
+                                        <time datetime="@member.JoinedAtUtc.ToString("O")">
+                                            @member.JoinedAtUtc.ToString("dd/MM/yyyy")
+                                        </time>
+                                    </td>
+                                    <td>
+                                        @if (member.IsOwner)
+                                        {
+                                            <span class="badge team-owner-badge">Propriétaire</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="team-members-mobile">
+                @foreach (TeamMemberViewModel member in Model.Members)
+                {
+                    <article class="team-member-card">
+                        <div class="team-member-card-header">
+                            <span class="team-member-identity">
+                                <strong>@member.Pseudo</strong>
+                                <span class="text-body-secondary">#@member.Tag</span>
+                            </span>
+                        </div>
+
+                        <div class="team-member-role-row">
+                            <p class="team-member-role mb-0">@member.RoleLabel</p>
+
+                            @if (member.IsOwner)
+                            {
+                                <span class="badge team-owner-badge">Propriétaire</span>
+                            }
+                        </div>
+                        <p class="text-body-secondary mb-0">
+                            Entrée :
+                            <time datetime="@member.JoinedAtUtc.ToString("O")">
+                                @member.JoinedAtUtc.ToString("dd/MM/yyyy")
+                            </time>
+                        </p>
+                    </article>
+                }
+            </div>
+        </div>
+    </section>
+</section>

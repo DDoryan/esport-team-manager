@@ -147,6 +147,168 @@ public sealed class UserTeamServiceTests
         Assert.DoesNotContain(teams, team => team.TeamId == otherResult.TeamId);
     }
 
+    [Fact]
+    public async Task GetManagementDetailsAsync_WhenUserHasActiveMembership_ReturnsTeamAndActiveMembers()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser member = await CreateUserAsync(userManager, "member@example.test", "Member", "B02");
+
+        CreateTeamResult result = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.TeamId);
+
+        Guid teamId = result.TeamId.Value;
+        Team team = await context.Teams.SingleAsync(item => item.TeamId == teamId);
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        DateTimeOffset joinedAtUtc = DateTimeOffset.UtcNow;
+        TeamMembership membership = new(Guid.NewGuid(), teamId, member.Id, managerRoleId, joinedAtUtc);
+
+        team.UpdateInformation("Phoenix Academy", "PHX", "Équipe amateur compétitive.", "Europe/Paris");
+        context.TeamMemberships.Add(membership);
+
+        await context.SaveChangesAsync();
+
+        TeamManagementDetails? details = await teamService.GetManagementDetailsAsync(owner.Id, teamId);
+
+        Assert.NotNull(details);
+        Assert.Equal(teamId, details.TeamId);
+        Assert.Equal("Phoenix Academy", details.Name);
+        Assert.Equal("PHX", details.Tag);
+        Assert.Equal("Équipe amateur compétitive.", details.Description);
+        Assert.Equal("Europe/Paris", details.TimeZoneId);
+        Assert.True(details.CurrentUserIsOwner);
+        Assert.Equal(2, details.Members.Count);
+
+        TeamMemberSummary ownerSummary = details.Members.First();
+        TeamMemberSummary memberSummary = details.Members.Single(item => item.TeamMembershipId == membership.TeamMembershipId);
+
+        Assert.Equal("Owner", ownerSummary.Pseudo);
+        Assert.Equal("A01", ownerSummary.Tag);
+        Assert.Equal("Joueur", ownerSummary.RoleLabel);
+        Assert.True(ownerSummary.IsOwner);
+
+        Assert.Equal("Member", memberSummary.Pseudo);
+        Assert.Equal("B02", memberSummary.Tag);
+        Assert.Equal("Manager", memberSummary.RoleLabel);
+        Assert.False(memberSummary.IsOwner);
+        Assert.Equal(joinedAtUtc, memberSummary.JoinedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetManagementDetailsAsync_WhenMembershipIsClosed_ReturnsNull()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser formerMember = await CreateUserAsync(userManager, "former@example.test", "Former", "B02");
+
+        CreateTeamResult result = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.TeamId);
+
+        Guid teamId = result.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        DateTimeOffset joinedAtUtc = DateTimeOffset.UtcNow.AddDays(-2);
+        TeamMembership membership = new(Guid.NewGuid(), teamId, formerMember.Id, playerRoleId, joinedAtUtc);
+
+        context.TeamMemberships.Add(membership);
+
+        await context.SaveChangesAsync();
+
+        membership.Leave(joinedAtUtc.AddDays(1));
+
+        await context.SaveChangesAsync();
+
+        TeamManagementDetails? details = await teamService.GetManagementDetailsAsync(formerMember.Id, teamId);
+
+        Assert.Null(details);
+    }
+
+    [Fact]
+    public async Task GetManagementDetailsAsync_WhenUserRejoins_ReturnsOnlyNewActivePeriod()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser returningMember = await CreateUserAsync(userManager, "returning@example.test", "Returning", "B02");
+
+        CreateTeamResult result = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.TeamId);
+
+        Guid teamId = result.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        DateTimeOffset firstJoinedAtUtc = DateTimeOffset.UtcNow.AddDays(-4);
+        DateTimeOffset rejoinedAtUtc = DateTimeOffset.UtcNow;
+        TeamMembership formerMembership = new(Guid.NewGuid(), teamId, returningMember.Id, playerRoleId, firstJoinedAtUtc);
+
+        context.TeamMemberships.Add(formerMembership);
+
+        await context.SaveChangesAsync();
+
+        formerMembership.Leave(firstJoinedAtUtc.AddDays(2));
+
+        await context.SaveChangesAsync();
+
+        TeamMembership activeMembership = new(Guid.NewGuid(), teamId, returningMember.Id, managerRoleId, rejoinedAtUtc);
+
+        context.TeamMemberships.Add(activeMembership);
+
+        await context.SaveChangesAsync();
+
+        TeamManagementDetails? details = await teamService.GetManagementDetailsAsync(returningMember.Id, teamId);
+
+        Assert.NotNull(details);
+        Assert.False(details.CurrentUserIsOwner);
+
+        TeamMemberSummary memberSummary = Assert.Single(details.Members, item => item.Pseudo == "Returning");
+
+        Assert.Equal(activeMembership.TeamMembershipId, memberSummary.TeamMembershipId);
+        Assert.Equal("B02", memberSummary.Tag);
+        Assert.Equal("Manager", memberSummary.RoleLabel);
+        Assert.Equal(rejoinedAtUtc, memberSummary.JoinedAtUtc);
+        Assert.DoesNotContain(details.Members, item => item.TeamMembershipId == formerMembership.TeamMembershipId);
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();

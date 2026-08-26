@@ -7,7 +7,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** ACC-005 le 25 août 2026, en 4 h pour 4 h estimées.
+- **Dernier ticket clôturé :** ACC-006 le 25 août 2026, en 2 h 30 pour 6 h estimées.
 - **Avancement :** 24 éléments terminés sur 60 et 182 h estimées restantes.
 - **Validation :** 126 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` verte et production Railway validée après déploiement manuel.
 
@@ -129,3 +129,7 @@ Le dossier documentaire de référence comprend notamment :
 - journal de veille et changelog.
 
 Les mentions légales, CGU, politique de confidentialité et registre des traitements RGPD doivent être créés pendant le P1 dès stabilisation des traitements, avant toute ouverture publique élargie.
+
+## Point de clôture ACC-006
+
+ACC-006 est fusionné par la PR #30 et validé par 141 tests. La CI master #80 et le déploiement manuel #5 sont réussis. La migration `20260825201423_AddPendingEmailReservationConstraints` est appliquée en production.

@@ -51,6 +51,36 @@ public sealed class TeamsController : Controller
         return View(viewModel);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Management(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, teamId, cancellationToken);
+
+        if (details is null)
+        {
+            return Forbid();
+        }
+
+        IReadOnlyCollection<TeamMemberViewModel> members = details.Members
+            .Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.RoleLabel, member.IsOwner, member.JoinedAtUtc))
+            .ToArray();
+        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, members);
+
+        return View(viewModel);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(CreateTeamViewModel model, CancellationToken cancellationToken)
     {
