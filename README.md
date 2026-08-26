@@ -7,9 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** ACC-006 le 25 août 2026, en 2 h 30 pour 6 h estimées.
-- **Avancement :** 24 éléments terminés sur 60 et 182 h estimées restantes.
-- **Validation :** 126 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` verte et production Railway validée après déploiement manuel.
+- **Dernier ticket clôturé :** TEAM-003 le 26 août 2026, en 4 h pour 4 h estimées.
+- **Avancement :** 26 éléments terminés sur 60 et 172 h estimées restantes.
+- **Validation :** 144 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #84 verte et production Railway validée après le déploiement manuel #6.
+- **Prochain ticket :** TEAM-009 — Naviguer entre ses équipes.
+- **Projection :** déficit maintenu à 32 h au 6 septembre et MVP complet projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
 
 ## Architecture
 
@@ -26,6 +28,9 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - déploiement de production déclenché manuellement depuis GitHub Actions après sauvegarde PostgreSQL vérifiée ;
 - réinitialisation sécurisée du mot de passe par courriel, limitée à trois demandes par heure, avec jeton d’une heure à usage unique ;
 - profil en lecture seule pour l’identité `Pseudo #tag` et changement du mot de passe avec invalidation des autres sessions.
+- changement sécurisé d’adresse électronique après réauthentification, réservation unique d’une heure et confirmation à usage unique ;
+- consultation sécurisée de la gestion d’équipe, membres actifs, historique d’appartenance conservé et navigation d’équipe partagée ;
+- tableau des membres sur ordinateur et cartes responsive sur mobile.
 
 ## Prérequis locaux
 
@@ -85,7 +90,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après ACC-005 : six projets compilés sans avertissement ni erreur ; 126 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
+Après TEAM-003 : six projets compilés sans erreur ; 144 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
 
 ### Exécution locale des tests avec Smart App Control
 
@@ -99,7 +104,7 @@ Lors de la première utilisation, créer une copie Linux propre du dépôt en ex
 sudo apt-get update
 sudo apt-get install -y dotnet-sdk-10.0 rsync
 mkdir -p ~/source/repos/esport-team-manager
-rsync -a --exclude='.vs/' --exclude='bin/' --exclude='obj/' --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' /mnt/c/Users/<utilisateur-windows>/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
+rsync -a --exclude='.git/' --exclude='.vs/' --exclude='bin/' --exclude='obj/' --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' /mnt/c/Users/dorya/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
 cd ~/source/repos/esport-team-manager
 dotnet test RepriseWeb.slnx
 ```
@@ -107,7 +112,7 @@ dotnet test RepriseWeb.slnx
 Avant les exécutions suivantes, resynchroniser la copie Linux depuis le dépôt Windows :
 
 ```bash
-rsync -a --delete --exclude='.git/' --exclude='.vs/' --exclude='bin/' --exclude='obj/' --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' /mnt/c/Users/<utilisateur-windows>/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
+rsync -a --delete --exclude='.git/' --exclude='.vs/' --exclude='bin/' --exclude='obj/' --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' /mnt/c/Users/dorya/source/repos/esport-team-manager/ ~/source/repos/esport-team-manager/
 cd ~/source/repos/esport-team-manager
 dotnet test RepriseWeb.slnx
 ```
@@ -130,6 +135,17 @@ Le dossier documentaire de référence comprend notamment :
 
 Les mentions légales, CGU, politique de confidentialité et registre des traitements RGPD doivent être créés pendant le P1 dès stabilisation des traitements, avant toute ouverture publique élargie.
 
-## Point de clôture ACC-006
+## Point de clôture TEAM-003
 
-ACC-006 est fusionné par la PR #30 et validé par 141 tests. La CI master #80 et le déploiement manuel #5 sont réussis. La migration `20260825201423_AddPendingEmailReservationConstraints` est appliquée en production.
+TEAM-003 est fusionné par la PR #31 et validé par 144 tests. Les CI #82 et #84, le déploiement manuel #6, Railway, `/health` et la recette de production desktop/mobile sont réussis. Aucune migration n’était requise.
+
+- consultation autorisée uniquement pour une appartenance active ;
+- anciens membres refusés et périodes closes conservées sans onglet public ;
+- réintégration projetée depuis la nouvelle période active ;
+- identité, rôle, date d’entrée et statut Propriétaire affichés ;
+- sélecteur d’équipe et onglets Calendrier / Gestion d’équipe dans l’en-tête partagé ;
+- tableau desktop transformé en cartes mobiles sans débordement horizontal ;
+- empreintes SHA-256 distante et locale de la sauvegarde identiques ;
+- temps réel : 4 h pour 4 h estimées.
+
+L’égalité des empreintes valide l’intégrité du transfert, pas une restauration. La restauration réelle de la base et d’une image reste planifiée dans QLT-008 après STR-004 et TEAM-002.
