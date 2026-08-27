@@ -20,7 +20,7 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
         builder.HasKey(invitation => invitation.InvitationId);
 
         builder.Property(invitation => invitation.InvitationId).ValueGeneratedNever();
-        builder.Property(invitation => invitation.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder.Property(invitation => invitation.Status).HasConversion<string>().HasMaxLength(16).IsRequired().IsConcurrencyToken();
         builder.Property(invitation => invitation.CreatedAtUtc).IsRequired();
 
         builder.HasIndex(invitation => new { invitation.SenderUserId, invitation.CreatedAtUtc }).HasDatabaseName("IX_Invitations_SenderUserId_CreatedAtUtc");

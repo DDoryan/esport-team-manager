@@ -616,10 +616,11 @@ public sealed class UserTeamService : IUserTeamService
             return InviteTeamMemberResult.Failure([InvitationTargetErrorMessage]);
         }
 
-        _context.Invitations.Add(invitation);
-
+        Notification notification = Notification.CreateForInvitation(Guid.NewGuid(), recipient.Id, invitationId, utcNow);
         ActionTrace actionTrace = new(request.SenderUserId, request.TeamId, InvitationCreatedActionCode, nameof(Invitation), invitationId.ToString(), TraceOutcome.Succeeded, utcNow);
 
+        _context.Invitations.Add(invitation);
+        _context.Notifications.Add(notification);
         _context.ActionTraces.Add(actionTrace);
 
         try

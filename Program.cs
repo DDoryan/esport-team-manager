@@ -17,6 +17,8 @@ using EsportTeamManager.Infrastructure.Activities;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using EsportTeamManager.Application.Notifications;
+using EsportTeamManager.Infrastructure.Notifications;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -141,6 +143,7 @@ builder.Services.AddHostedService<UnconfirmedAccountCleanupBackgroundService>();
 builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
 builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
 builder.Services.AddScoped<IUserTeamService, UserTeamService>();
+builder.Services.AddScoped<IUserNotificationService, UserNotificationService>();
 builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 builder.Services.AddScoped<IActivityEditingService, ActivityEditingService>();
