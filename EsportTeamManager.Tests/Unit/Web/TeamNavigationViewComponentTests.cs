@@ -155,5 +155,20 @@ public sealed class TeamNavigationViewComponentTests
 
             return Task.FromResult(InviteTeamMemberResult.Denied());
         }
+
+        public Task<TeamMembershipActionResult> ChangeMemberRoleAsync(ChangeTeamMemberRoleRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TeamMembershipActionResult.Denied());
+        }
+
+        public Task<TeamMembershipActionResult> LeaveTeamAsync(LeaveTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TeamMembershipActionResult.Denied());
+        }
+
+        public Task<TeamMembershipActionResult> RemoveMemberAsync(RemoveTeamMemberRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(TeamMembershipActionResult.Denied());
+        }
     }
 }

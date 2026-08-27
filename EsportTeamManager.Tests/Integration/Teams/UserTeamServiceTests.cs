@@ -191,6 +191,8 @@ public sealed class UserTeamServiceTests
         Assert.Equal("Europe/Paris", details.TimeZoneId);
         Assert.True(details.CurrentUserIsOwner);
         Assert.True(details.CurrentUserCanInviteMembers);
+        Assert.False(details.CurrentUserCanLeaveTeam);
+        Assert.Equal(3, details.AvailableMemberRoles.Count);
         Assert.Equal(3, details.AvailableInvitationRoles.Count);
         Assert.Contains(details.AvailableInvitationRoles, role => role.Label == "Manager");
         Assert.Contains(details.AvailableInvitationRoles, role => role.Label == "Coach");
@@ -204,12 +206,17 @@ public sealed class UserTeamServiceTests
         Assert.Equal("A01", ownerSummary.Tag);
         Assert.Equal("Joueur", ownerSummary.RoleLabel);
         Assert.True(ownerSummary.IsOwner);
+        Assert.True(ownerSummary.CanChangeRole);
+        Assert.False(ownerSummary.CanRemove);
 
         Assert.Equal("Member", memberSummary.Pseudo);
         Assert.Equal("B02", memberSummary.Tag);
         Assert.Equal("Manager", memberSummary.RoleLabel);
         Assert.False(memberSummary.IsOwner);
         Assert.Equal(joinedAtUtc, memberSummary.JoinedAtUtc);
+        Assert.Equal(managerRoleId, memberSummary.TeamRoleId);
+        Assert.True(memberSummary.CanChangeRole);
+        Assert.True(memberSummary.CanRemove);
     }
 
     [Fact]
@@ -412,6 +419,17 @@ public sealed class UserTeamServiceTests
         Assert.Contains(details.AvailableInvitationRoles, role => role.Label == "Coach");
         Assert.Contains(details.AvailableInvitationRoles, role => role.Label == "Joueur");
         Assert.DoesNotContain(details.AvailableInvitationRoles, role => role.Label == "Manager");
+
+        Assert.True(details.CurrentUserCanLeaveTeam);
+        Assert.Equal(2, details.AvailableMemberRoles.Count);
+
+        TeamMemberSummary ownerSummary = details.Members.Single(member => member.IsOwner);
+        TeamMemberSummary managerSummary = details.Members.Single(member => member.TeamMembershipId == managerMembership.TeamMembershipId);
+
+        Assert.False(ownerSummary.CanChangeRole);
+        Assert.False(ownerSummary.CanRemove);
+        Assert.False(managerSummary.CanChangeRole);
+        Assert.False(managerSummary.CanRemove);
     }
 
     [Fact]
@@ -547,6 +565,13 @@ public sealed class UserTeamServiceTests
         Assert.False(details.CurrentUserIsOwner);
         Assert.False(details.CurrentUserCanInviteMembers);
         Assert.Empty(details.AvailableInvitationRoles);
+        Assert.True(details.CurrentUserCanLeaveTeam);
+        Assert.Empty(details.AvailableMemberRoles);
+        Assert.All(details.Members, member =>
+        {
+            Assert.False(member.CanChangeRole);
+            Assert.False(member.CanRemove);
+        });
 
         InviteTeamMemberRequest request = new(player.Id, teamId, "Recipient#C03", playerRoleId);
 
@@ -729,6 +754,422 @@ public sealed class UserTeamServiceTests
         Assert.Null(result.InvitationId);
         Assert.Equal("Vous avez atteint la limite de 30 invitations par heure. Veuillez réessayer plus tard.", Assert.Single(result.Errors));
         Assert.Equal(30, await context.Invitations.AsNoTracking().CountAsync());
+    }
+
+    [Fact]
+    public async Task ChangeMemberRoleAsync_WhenOwnerChangesOwnRole_KeepsTeamOwnership()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        int coachRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Coach")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        ChangeTeamMemberRoleRequest request = new(owner.Id, teamId, ownerMembership.TeamMembershipId, coachRoleId);
+
+        TeamMembershipActionResult result = await teamService.ChangeMemberRoleAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+        TeamMembership updatedMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == ownerMembership.TeamMembershipId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_MEMBER_ROLE_CHANGED");
+
+        Assert.Equal(owner.Id, team.OwnerUserId);
+        Assert.Equal(coachRoleId, updatedMembership.TeamRoleId);
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(TeamMembership), trace.ObjectType);
+        Assert.Equal(ownerMembership.TeamMembershipId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+    }
+
+    [Fact]
+    public async Task ChangeMemberRoleAsync_WhenManagerChangesPlayerToCoach_ChangesRole()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser manager = await CreateActiveUserAsync(userManager, "manager@example.test", "ManagerUser", "B02");
+        ApplicationUser player = await CreateActiveUserAsync(userManager, "player@example.test", "PlayerUser", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int coachRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Coach")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership managerMembership = new(Guid.NewGuid(), teamId, manager.Id, managerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership playerMembership = new(Guid.NewGuid(), teamId, player.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.AddRange(managerMembership, playerMembership);
+
+        await context.SaveChangesAsync();
+
+        ChangeTeamMemberRoleRequest request = new(manager.Id, teamId, playerMembership.TeamMembershipId, coachRoleId);
+
+        TeamMembershipActionResult result = await teamService.ChangeMemberRoleAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        TeamMembership updatedMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == playerMembership.TeamMembershipId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_MEMBER_ROLE_CHANGED");
+
+        Assert.Equal(coachRoleId, updatedMembership.TeamRoleId);
+        Assert.Equal(manager.Id, trace.ActorUserId);
+    }
+
+    [Fact]
+    public async Task ChangeMemberRoleAsync_WhenManagerTargetsProtectedMemberOrRole_ReturnsDenied()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser manager = await CreateActiveUserAsync(userManager, "manager@example.test", "ManagerUser", "B02");
+        ApplicationUser otherManager = await CreateActiveUserAsync(userManager, "other-manager@example.test", "OtherManager", "C03");
+        ApplicationUser player = await CreateActiveUserAsync(userManager, "player@example.test", "PlayerUser", "D04");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int coachRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Coach")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        TeamMembership managerMembership = new(Guid.NewGuid(), teamId, manager.Id, managerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership otherManagerMembership = new(Guid.NewGuid(), teamId, otherManager.Id, managerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership playerMembership = new(Guid.NewGuid(), teamId, player.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.AddRange(managerMembership, otherManagerMembership, playerMembership);
+
+        await context.SaveChangesAsync();
+
+        TeamMembershipActionResult ownerResult = await teamService.ChangeMemberRoleAsync(new ChangeTeamMemberRoleRequest(manager.Id, teamId, ownerMembership.TeamMembershipId, coachRoleId));
+        TeamMembershipActionResult managerResult = await teamService.ChangeMemberRoleAsync(new ChangeTeamMemberRoleRequest(manager.Id, teamId, otherManagerMembership.TeamMembershipId, coachRoleId));
+        TeamMembershipActionResult promotionResult = await teamService.ChangeMemberRoleAsync(new ChangeTeamMemberRoleRequest(manager.Id, teamId, playerMembership.TeamMembershipId, managerRoleId));
+
+        Assert.False(ownerResult.Succeeded);
+        Assert.True(ownerResult.AccessDenied);
+        Assert.False(managerResult.Succeeded);
+        Assert.True(managerResult.AccessDenied);
+        Assert.False(promotionResult.Succeeded);
+        Assert.True(promotionResult.AccessDenied);
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_MEMBER_ROLE_CHANGED"));
+
+        TeamMembership unchangedOwner = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == ownerMembership.TeamMembershipId);
+        TeamMembership unchangedManager = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == otherManagerMembership.TeamMembershipId);
+        TeamMembership unchangedPlayer = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == playerMembership.TeamMembershipId);
+
+        Assert.Equal(playerRoleId, unchangedOwner.TeamRoleId);
+        Assert.Equal(managerRoleId, unchangedManager.TeamRoleId);
+        Assert.Equal(playerRoleId, unchangedPlayer.TeamRoleId);
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenOwnerRemovesMember_ClosesMembershipAndCreatesTrace()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser member = await CreateActiveUserAsync(userManager, "member@example.test", "Member", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership membership = new(Guid.NewGuid(), teamId, member.Id, playerRoleId, DateTimeOffset.UtcNow.AddDays(-1));
+
+        context.TeamMemberships.Add(membership);
+
+        await context.SaveChangesAsync();
+
+        DateTimeOffset beforeRemovalUtc = DateTimeOffset.UtcNow;
+        RemoveTeamMemberRequest request = new(owner.Id, teamId, membership.TeamMembershipId);
+
+        TeamMembershipActionResult result = await teamService.RemoveMemberAsync(request);
+
+        DateTimeOffset afterRemovalUtc = DateTimeOffset.UtcNow;
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        TeamMembership closedMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(item => item.TeamMembershipId == membership.TeamMembershipId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_MEMBER_REMOVED");
+
+        Assert.Equal(MembershipStatus.Removed, closedMembership.Status);
+        Assert.Equal(member.Id, closedMembership.UserId);
+        Assert.Null(closedMembership.FormerMemberId);
+        Assert.NotNull(closedMembership.LeftAtUtc);
+        Assert.InRange(closedMembership.LeftAtUtc.Value, beforeRemovalUtc, afterRemovalUtc);
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(TeamMembership), trace.ObjectType);
+        Assert.Equal(membership.TeamMembershipId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+        Assert.Null(await teamService.GetManagementDetailsAsync(member.Id, teamId));
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenManagerAttemptsRemovalOrOwnerTargetsSelf_ReturnsDenied()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser manager = await CreateActiveUserAsync(userManager, "manager@example.test", "ManagerUser", "B02");
+        ApplicationUser player = await CreateActiveUserAsync(userManager, "player@example.test", "PlayerUser", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        TeamMembership managerMembership = new(Guid.NewGuid(), teamId, manager.Id, managerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership playerMembership = new(Guid.NewGuid(), teamId, player.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.AddRange(managerMembership, playerMembership);
+
+        await context.SaveChangesAsync();
+
+        TeamMembershipActionResult managerResult = await teamService.RemoveMemberAsync(new RemoveTeamMemberRequest(manager.Id, teamId, playerMembership.TeamMembershipId));
+        TeamMembershipActionResult ownerSelfResult = await teamService.RemoveMemberAsync(new RemoveTeamMemberRequest(owner.Id, teamId, ownerMembership.TeamMembershipId));
+
+        Assert.False(managerResult.Succeeded);
+        Assert.True(managerResult.AccessDenied);
+        Assert.False(ownerSelfResult.Succeeded);
+        Assert.True(ownerSelfResult.AccessDenied);
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_MEMBER_REMOVED"));
+
+        TeamMembership unchangedPlayer = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == playerMembership.TeamMembershipId);
+        TeamMembership unchangedOwner = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == ownerMembership.TeamMembershipId);
+
+        Assert.Equal(MembershipStatus.Active, unchangedPlayer.Status);
+        Assert.Null(unchangedPlayer.LeftAtUtc);
+        Assert.Equal(MembershipStatus.Active, unchangedOwner.Status);
+        Assert.Null(unchangedOwner.LeftAtUtc);
+    }
+
+    [Fact]
+    public async Task LeaveTeamAsync_WhenMemberLeaves_ClosesMembershipAndRemovesAccess()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser member = await CreateActiveUserAsync(userManager, "member@example.test", "Member", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership membership = new(Guid.NewGuid(), teamId, member.Id, playerRoleId, DateTimeOffset.UtcNow.AddDays(-1));
+
+        context.TeamMemberships.Add(membership);
+
+        await context.SaveChangesAsync();
+
+        DateTimeOffset beforeDepartureUtc = DateTimeOffset.UtcNow;
+        LeaveTeamRequest request = new(member.Id, teamId);
+
+        TeamMembershipActionResult result = await teamService.LeaveTeamAsync(request);
+
+        DateTimeOffset afterDepartureUtc = DateTimeOffset.UtcNow;
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        TeamMembership closedMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(item => item.TeamMembershipId == membership.TeamMembershipId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_MEMBER_LEFT");
+
+        Assert.Equal(MembershipStatus.Left, closedMembership.Status);
+        Assert.Equal(member.Id, closedMembership.UserId);
+        Assert.NotNull(closedMembership.LeftAtUtc);
+        Assert.InRange(closedMembership.LeftAtUtc.Value, beforeDepartureUtc, afterDepartureUtc);
+        Assert.Equal(member.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(TeamMembership), trace.ObjectType);
+        Assert.Equal(membership.TeamMembershipId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+        Assert.Empty(await teamService.GetTeamsForUserAsync(member.Id));
+        Assert.Null(await teamService.GetManagementDetailsAsync(member.Id, teamId));
+    }
+
+    [Fact]
+    public async Task LeaveTeamAsync_WhenOwnerAttemptsDeparture_ReturnsFailureAndKeepsMembershipActive()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        LeaveTeamRequest request = new(owner.Id, teamId);
+
+        TeamMembershipActionResult result = await teamService.LeaveTeamAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Single(result.Errors);
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_MEMBER_LEFT"));
+
+        TeamMembership unchangedMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == ownerMembership.TeamMembershipId);
+
+        Assert.Equal(MembershipStatus.Active, unchangedMembership.Status);
+        Assert.Null(unchangedMembership.LeftAtUtc);
+    }
+
+    [Fact]
+    public async Task GetManagementDetailsAsync_WhenMembersJoinedAtDifferentTimes_ReturnsChronologicalOrder()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser firstMember = await CreateActiveUserAsync(userManager, "first@example.test", "ZuluMember", "B02");
+        ApplicationUser secondMember = await CreateActiveUserAsync(userManager, "second@example.test", "AlphaMember", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        DateTimeOffset firstJoinedAtUtc = DateTimeOffset.UtcNow;
+        DateTimeOffset secondJoinedAtUtc = firstJoinedAtUtc.AddSeconds(1);
+        TeamMembership firstMembership = new(Guid.NewGuid(), teamId, firstMember.Id, playerRoleId, firstJoinedAtUtc);
+        TeamMembership secondMembership = new(Guid.NewGuid(), teamId, secondMember.Id, playerRoleId, secondJoinedAtUtc);
+
+        context.TeamMemberships.AddRange(firstMembership, secondMembership);
+
+        await context.SaveChangesAsync();
+
+        TeamManagementDetails? details = await teamService.GetManagementDetailsAsync(owner.Id, teamId);
+
+        Assert.NotNull(details);
+        Assert.Equal(["Owner", "ZuluMember", "AlphaMember"], details.Members.Select(member => member.Pseudo).ToArray());
     }
 
     private static ServiceProvider CreateServiceProvider(string connectionString)

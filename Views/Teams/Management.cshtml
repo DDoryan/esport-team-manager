@@ -19,6 +19,7 @@
                     <h2 id="team-members-title" class="h3 mb-1">Membres</h2>
                     <p class="text-body-secondary mb-0">@memberCountLabel</p>
                 </div>
+
                 @if (Model.CurrentUserCanInviteMembers)
                 {
                     <a class="btn btn-primary team-members-invite-button"
@@ -40,6 +41,7 @@
                                 <th scope="col">Rôle</th>
                                 <th scope="col">Entrée</th>
                                 <th scope="col">Statut</th>
+                                <th scope="col">Actions</th>
                             </tr>
                         </thead>
 
@@ -66,6 +68,38 @@
                                         }
                                         else
                                         {
+                                            <span class="badge team-member-badge">Membre</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (member.CanChangeRole || member.CanRemove)
+                                        {
+                                            <div class="team-member-actions">
+                                                @if (member.CanChangeRole)
+                                                {
+                                                    <a class="btn btn-sm btn-outline-primary"
+                                                       asp-controller="Teams"
+                                                       asp-action="ChangeRole"
+                                                       asp-route-teamId="@Model.TeamId"
+                                                       asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                        Modifier
+                                                    </a>
+                                                }
+
+                                                @if (member.CanRemove)
+                                                {
+                                                    <a class="btn btn-sm btn-outline-danger"
+                                                       asp-controller="Teams"
+                                                       asp-action="RemoveMember"
+                                                       asp-route-teamId="@Model.TeamId"
+                                                       asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                        Exclure
+                                                    </a>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
                                             <span class="text-body-secondary">—</span>
                                         }
                                     </td>
@@ -85,6 +119,47 @@
                                 <strong>@member.Pseudo</strong>
                                 <span class="text-body-secondary">#@member.Tag</span>
                             </span>
+
+                            @if (member.CanChangeRole || member.CanRemove)
+                            {
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary team-member-actions-toggle"
+                                            type="button"
+                                            data-bs-toggle="dropdown"
+                                            aria-expanded="false"
+                                            aria-label="Actions pour @member.Pseudo#@member.Tag">
+                                        <span aria-hidden="true">⋮</span>
+                                    </button>
+
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        @if (member.CanChangeRole)
+                                        {
+                                            <li>
+                                                <a class="dropdown-item"
+                                                   asp-controller="Teams"
+                                                   asp-action="ChangeRole"
+                                                   asp-route-teamId="@Model.TeamId"
+                                                   asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                    Modifier le rôle
+                                                </a>
+                                            </li>
+                                        }
+
+                                        @if (member.CanRemove)
+                                        {
+                                            <li>
+                                                <a class="dropdown-item text-danger"
+                                                   asp-controller="Teams"
+                                                   asp-action="RemoveMember"
+                                                   asp-route-teamId="@Model.TeamId"
+                                                   asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                    Exclure
+                                                </a>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
                         </div>
 
                         <div class="team-member-role-row">
@@ -94,7 +169,12 @@
                             {
                                 <span class="badge team-owner-badge">Propriétaire</span>
                             }
+                            else
+                            {
+                                <span class="badge team-member-badge">Membre</span>
+                            }
                         </div>
+
                         <p class="text-body-secondary mb-0">
                             Entrée :
                             <time datetime="@member.JoinedAtUtc.ToString("O")">
@@ -106,4 +186,25 @@
             </div>
         </div>
     </section>
+
+    @if (Model.CurrentUserCanLeaveTeam)
+    {
+        <section class="card team-departure-panel mt-4" aria-labelledby="team-departure-title">
+            <div class="card-body team-departure-content">
+                <div>
+                    <h2 id="team-departure-title" class="h3 mb-1">Départ de l’équipe</h2>
+                    <p class="text-body-secondary mb-0">
+                        Quitter l’équipe entraîne la perte immédiate de son accès.
+                    </p>
+                </div>
+
+                <a class="btn btn-outline-danger team-departure-button"
+                   asp-controller="Teams"
+                   asp-action="LeaveTeam"
+                   asp-route-teamId="@Model.TeamId">
+                    Quitter l’équipe
+                </a>
+            </div>
+        </section>
+    }
 </section>
