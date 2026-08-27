@@ -16,9 +16,13 @@ public sealed class TeamManagementViewModel
 
     public bool CurrentUserCanInviteMembers { get; }
 
+    public bool CurrentUserCanLeaveTeam { get; }
+
+    public IReadOnlyCollection<TeamRoleOptionViewModel> AvailableRoles { get; }
+
     public IReadOnlyCollection<TeamMemberViewModel> Members { get; }
 
-    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamMemberViewModel> members)
+    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, bool currentUserCanLeaveTeam, IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles, IReadOnlyCollection<TeamMemberViewModel> members)
     {
         TeamId = teamId;
         Name = name;
@@ -27,6 +31,8 @@ public sealed class TeamManagementViewModel
         TimeZoneId = timeZoneId;
         CurrentUserIsOwner = currentUserIsOwner;
         CurrentUserCanInviteMembers = currentUserCanInviteMembers;
+        CurrentUserCanLeaveTeam = currentUserCanLeaveTeam;
+        AvailableRoles = availableRoles;
         Members = members;
     }
 }

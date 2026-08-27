@@ -318,6 +318,12 @@ a:focus-visible
     color: #ffffff;
 }
 
+.team-member-badge
+{
+    background: var(--app-navigation-muted);
+    color: #ffffff;
+}
+
 .team-card-calendar 
 {
     align-self: flex-end;
@@ -1711,7 +1717,7 @@ html.activity-edit-fixed-page .activity-edit-page
 
 .team-members-table
 {
-    min-width: 42rem;
+    min-width: 52rem;
 }
 
 .team-members-table thead
@@ -1784,6 +1790,35 @@ html.activity-edit-fixed-page .activity-edit-page
     color: var(--app-text);
 }
 
+.team-member-actions
+{
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.team-member-actions-toggle
+{
+    min-width: 2.5rem;
+    flex: 0 0 auto;
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.team-departure-content
+{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.team-departure-button
+{
+    flex: 0 0 auto;
+}
+
 @media (max-width: 767.98px)
 {
     .team-management-header
@@ -1815,12 +1850,6 @@ html.activity-edit-fixed-page .activity-edit-page
     .team-management-header
     {
         margin-bottom: 1.25rem !important;
-    }
-
-    .team-member-card-header
-    {
-        align-items: flex-start;
-        flex-direction: column;
     }
 }
 
@@ -1894,6 +1923,17 @@ html.activity-edit-fixed-page .activity-edit-page
     }
 
     .team-invite-actions .btn
+    {
+        width: 100%;
+    }
+
+    .team-departure-content
+    {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .team-departure-button
     {
         width: 100%;
     }

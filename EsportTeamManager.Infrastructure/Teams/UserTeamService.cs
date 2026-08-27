@@ -19,6 +19,9 @@ public sealed class UserTeamService : IUserTeamService
     private const string PlayerRoleCode = "Player";
     private const string TeamCreatedActionCode = "TEAM_CREATED";
     private const string InvitationTargetErrorMessage = "L’invitation n’a pas pu être envoyée. Vérifiez l’identité saisie et le rôle proposé.";
+    private const string TeamMemberRoleChangedActionCode = "TEAM_MEMBER_ROLE_CHANGED";
+    private const string TeamMemberRemovedActionCode = "TEAM_MEMBER_REMOVED";
+    private const string TeamMemberLeftActionCode = "TEAM_MEMBER_LEFT";
 
     private readonly ApplicationDbContext _context;
     private readonly ILookupNormalizer _lookupNormalizer;
@@ -31,6 +34,119 @@ public sealed class UserTeamService : IUserTeamService
         _lookupNormalizer = lookupNormalizer;
         _timeProvider = timeProvider;
         _logger = logger;
+    }
+
+    public async Task<TeamMembershipActionResult> ChangeMemberRoleAsync(ChangeTeamMemberRoleRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.TeamMembershipId == Guid.Empty || request.NewTeamRoleId <= 0)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        var actorAccess = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == request.TeamId && membership.UserId == request.ActorUserId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new
+            {
+                Membership = membership,
+                Team = team
+            })
+            .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new
+            {
+                item.Team.OwnerUserId,
+                ActorRoleCode = role.Code
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (actorAccess is null)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        bool actorIsOwner = actorAccess.OwnerUserId == request.ActorUserId;
+        bool actorIsManager = actorAccess.ActorRoleCode == ManagerRoleCode;
+
+        if (!actorIsOwner && !actorIsManager)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        var targetData = await _context.TeamMemberships
+            .Where(membership => membership.TeamMembershipId == request.TeamMembershipId && membership.TeamId == request.TeamId && membership.Status == MembershipStatus.Active && membership.UserId.HasValue)
+            .Join(_context.TeamRoles, membership => membership.TeamRoleId, role => role.TeamRoleId, (membership, role) => new
+            {
+                Membership = membership,
+                CurrentRoleCode = role.Code
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (targetData is null)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        var newRole = await _context.TeamRoles
+            .AsNoTracking()
+            .Where(role => role.TeamRoleId == request.NewTeamRoleId && role.IsSystem)
+            .Select(role => new
+            {
+                role.TeamRoleId,
+                role.Code
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (newRole is null)
+        {
+            return TeamMembershipActionResult.Failure(["Le rôle sélectionné n’est pas valide."]);
+        }
+
+        bool targetIsOwner = targetData.Membership.UserId == actorAccess.OwnerUserId;
+
+        if (!actorIsOwner)
+        {
+            bool targetHasManageableRole = targetData.CurrentRoleCode == CoachRoleCode || targetData.CurrentRoleCode == PlayerRoleCode;
+            bool newRoleIsAllowed = newRole.Code == CoachRoleCode || newRole.Code == PlayerRoleCode;
+
+            if (targetIsOwner || !targetHasManageableRole || !newRoleIsAllowed)
+            {
+                return TeamMembershipActionResult.Denied();
+            }
+        }
+
+        if (targetData.Membership.TeamRoleId == newRole.TeamRoleId)
+        {
+            return TeamMembershipActionResult.Success();
+        }
+
+        try
+        {
+            targetData.Membership.ChangeRole(newRole.TeamRoleId);
+        }
+        catch (DomainException)
+        {
+            return TeamMembershipActionResult.Failure(["Le rôle du membre n’a pas pu être modifié."]);
+        }
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+        ActionTrace actionTrace = new(request.ActorUserId, request.TeamId, TeamMemberRoleChangedActionCode, nameof(TeamMembership), request.TeamMembershipId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Team member role change persistence failed for actor {ActorUserId}, team {TeamId}, and membership {TeamMembershipId}.", request.ActorUserId, request.TeamId, request.TeamMembershipId);
+
+            return TeamMembershipActionResult.Failure(["Le rôle du membre n’a pas pu être enregistré. Veuillez réessayer."]);
+        }
+
+        return TeamMembershipActionResult.Success();
     }
 
     public async Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -141,7 +257,8 @@ public sealed class UserTeamService : IUserTeamService
         }
 
         bool currentUserIsOwner = teamData.OwnerUserId == userId;
-        bool currentUserCanInviteMembers = currentUserIsOwner || teamData.CurrentUserRoleCode == ManagerRoleCode;
+        bool currentUserIsManager = teamData.CurrentUserRoleCode == ManagerRoleCode;
+        bool currentUserCanInviteMembers = currentUserIsOwner || currentUserIsManager;
         IReadOnlyCollection<TeamRoleOption> availableInvitationRoles = [];
 
         if (currentUserCanInviteMembers)
@@ -161,7 +278,7 @@ public sealed class UserTeamService : IUserTeamService
                 .ToListAsync(cancellationToken);
         }
 
-        IReadOnlyCollection<TeamMemberSummary> members = await _context.TeamMemberships
+        var memberRowsQuery = _context.TeamMemberships
             .AsNoTracking()
             .Where(membership => membership.TeamId == teamId && membership.Status == MembershipStatus.Active && membership.UserId.HasValue)
             .Join(_context.Users, membership => membership.UserId!.Value, user => user.Id, (membership, user) => new
@@ -171,15 +288,47 @@ public sealed class UserTeamService : IUserTeamService
             })
             .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new
             {
-                item.Membership,
-                item.User,
-                Role = role
-            })
-            .OrderByDescending(item => item.User.Id == teamData.OwnerUserId)
-            .ThenBy(item => item.User.Pseudo)
-            .ThenBy(item => item.User.Tag)
-            .Select(item => new TeamMemberSummary(item.Membership.TeamMembershipId, item.User.Pseudo, item.User.Tag, item.Role.Label, item.User.Id == teamData.OwnerUserId, item.Membership.JoinedAtUtc))
-            .ToListAsync(cancellationToken);
+                item.Membership.TeamMembershipId,
+                UserId = item.User.Id,
+                item.User.Pseudo,
+                item.User.Tag,
+                role.TeamRoleId,
+                RoleLabel = role.Label,
+                RoleCode = role.Code,
+                item.Membership.JoinedAtUtc
+            });
+
+        bool useClientSideMemberOrdering = string.Equals(_context.Database.ProviderName, "Microsoft.EntityFrameworkCore.Sqlite", StringComparison.Ordinal);
+        var memberRows = useClientSideMemberOrdering
+            ? await memberRowsQuery.ToListAsync(cancellationToken)
+            : await memberRowsQuery
+                .OrderBy(member => member.JoinedAtUtc)
+                .ThenBy(member => member.Pseudo)
+                .ThenBy(member => member.Tag)
+                .ToListAsync(cancellationToken);
+        var orderedMemberRows = memberRows.AsEnumerable();
+
+        if (useClientSideMemberOrdering)
+        {
+            orderedMemberRows = memberRows
+                .OrderBy(member => member.JoinedAtUtc)
+                .ThenBy(member => member.Pseudo)
+                .ThenBy(member => member.Tag);
+        }
+
+        IReadOnlyCollection<TeamMemberSummary> members =
+        [
+            .. orderedMemberRows.Select(member => new TeamMemberSummary(
+                member.TeamMembershipId,
+                member.Pseudo,
+                member.Tag,
+                member.TeamRoleId,
+                member.RoleLabel,
+                member.UserId == teamData.OwnerUserId,
+                currentUserIsOwner || (currentUserIsManager && member.UserId != teamData.OwnerUserId && (member.RoleCode == CoachRoleCode || member.RoleCode == PlayerRoleCode)),
+                currentUserIsOwner && member.UserId != userId,
+                member.JoinedAtUtc))
+        ];
 
         return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, currentUserIsOwner, currentUserCanInviteMembers, availableInvitationRoles, members);
     }
@@ -349,6 +498,122 @@ public sealed class UserTeamService : IUserTeamService
         }
 
         return InviteTeamMemberResult.Success(invitationId);
+    }
+
+    public async Task<TeamMembershipActionResult> LeaveTeamAsync(LeaveTeamRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.UserId == Guid.Empty || request.TeamId == Guid.Empty)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        var membershipData = await _context.TeamMemberships
+            .Where(membership => membership.TeamId == request.TeamId && membership.UserId == request.UserId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new
+            {
+                Membership = membership,
+                team.OwnerUserId
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (membershipData is null)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        if (membershipData.OwnerUserId == request.UserId)
+        {
+            return TeamMembershipActionResult.Failure(["Le propriétaire doit transférer la propriété ou supprimer l’équipe avant de pouvoir la quitter."]);
+        }
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+
+        try
+        {
+            membershipData.Membership.Leave(utcNow);
+        }
+        catch (DomainException)
+        {
+            return TeamMembershipActionResult.Failure(["L’équipe n’a pas pu être quittée."]);
+        }
+
+        ActionTrace actionTrace = new(request.UserId, request.TeamId, TeamMemberLeftActionCode, nameof(TeamMembership), membershipData.Membership.TeamMembershipId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Team departure persistence failed for user {UserId}, team {TeamId}, and membership {TeamMembershipId}.", request.UserId, request.TeamId, membershipData.Membership.TeamMembershipId);
+
+            return TeamMembershipActionResult.Failure(["Le départ de l’équipe n’a pas pu être enregistré. Veuillez réessayer."]);
+        }
+
+        return TeamMembershipActionResult.Success();
+    }
+
+    public async Task<TeamMembershipActionResult> RemoveMemberAsync(RemoveTeamMemberRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.TeamMembershipId == Guid.Empty)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        bool actorIsOwner = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == request.TeamId && membership.UserId == request.ActorUserId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => team.OwnerUserId)
+            .AnyAsync(ownerUserId => ownerUserId == request.ActorUserId, cancellationToken);
+
+        if (!actorIsOwner)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        TeamMembership? targetMembership = await _context.TeamMemberships
+            .SingleOrDefaultAsync(membership => membership.TeamMembershipId == request.TeamMembershipId && membership.TeamId == request.TeamId && membership.Status == MembershipStatus.Active && membership.UserId.HasValue, cancellationToken);
+
+        if (targetMembership is null || targetMembership.UserId == request.ActorUserId)
+        {
+            return TeamMembershipActionResult.Denied();
+        }
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+
+        try
+        {
+            targetMembership.Remove(utcNow);
+        }
+        catch (DomainException)
+        {
+            return TeamMembershipActionResult.Failure(["Le membre n’a pas pu être exclu."]);
+        }
+
+        ActionTrace actionTrace = new(request.ActorUserId, request.TeamId, TeamMemberRemovedActionCode, nameof(TeamMembership), request.TeamMembershipId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Team member removal persistence failed for actor {ActorUserId}, team {TeamId}, and membership {TeamMembershipId}.", request.ActorUserId, request.TeamId, request.TeamMembershipId);
+
+            return TeamMembershipActionResult.Failure(["L’exclusion du membre n’a pas pu être enregistrée. Veuillez réessayer."]);
+        }
+
+        return TeamMembershipActionResult.Success();
     }
 
     private static bool TryParseRecipientIdentity(string recipientIdentity, out string pseudo, out string tag)

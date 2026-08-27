@@ -247,6 +247,201 @@ public sealed class TeamsControllerTests
         Assert.NotNull(service.LastInviteRequest);
     }
 
+    [Fact]
+    public async Task ChangeRoleGet_WhenMemberCanBeManaged_ReturnsPrefilledForm()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Member", "B02", 3, "Joueur", false, true, true, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.ChangeRole(teamId, membershipId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        ChangeTeamMemberRoleViewModel viewModel = Assert.IsType<ChangeTeamMemberRoleViewModel>(view.Model);
+
+        Assert.Equal(teamId, viewModel.TeamId);
+        Assert.Equal("Phoenix Academy", viewModel.TeamName);
+        Assert.Equal(membershipId, viewModel.TeamMembershipId);
+        Assert.Equal("Member#B02", viewModel.MemberIdentity);
+        Assert.Equal(3, viewModel.NewTeamRoleId);
+        Assert.Equal(3, viewModel.AvailableRoles.Count);
+    }
+
+    [Fact]
+    public async Task ChangeRolePost_WhenRequestSucceeds_RedirectsToManagementAndDisplaysConfirmation()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Member", "B02", 3, "Joueur", false, true, true, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details, changeMemberRoleResult: TeamMembershipActionResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        ChangeTeamMemberRoleViewModel model = new()
+        {
+            TeamId = teamId,
+            TeamMembershipId = membershipId,
+            NewTeamRoleId = 2
+        };
+
+        IActionResult result = await controller.ChangeRole(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.Null(redirect.ControllerName);
+        Assert.NotNull(redirect.RouteValues);
+        Assert.Equal(teamId, Assert.IsType<Guid>(redirect.RouteValues["teamId"]));
+        Assert.Equal("Le rôle du membre a été modifié avec succès.", controller.TempData["SuccessMessage"]);
+
+        Assert.NotNull(service.LastChangeMemberRoleRequest);
+        Assert.Equal(userId, service.LastChangeMemberRoleRequest.ActorUserId);
+        Assert.Equal(teamId, service.LastChangeMemberRoleRequest.TeamId);
+        Assert.Equal(membershipId, service.LastChangeMemberRoleRequest.TeamMembershipId);
+        Assert.Equal(2, service.LastChangeMemberRoleRequest.NewTeamRoleId);
+    }
+
+    [Fact]
+    public async Task ChangeRoleGet_WhenMemberCannotBeManaged_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Owner", "A01", 3, "Joueur", true, false, false, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", false, true, [new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.ChangeRole(teamId, membershipId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(service.LastChangeMemberRoleRequest);
+    }
+
+    [Fact]
+    public async Task RemoveMemberPost_WhenRequestSucceeds_RedirectsToManagementAndDisplaysConfirmation()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Member", "B02", 3, "Joueur", false, true, true, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details, removeMemberResult: TeamMembershipActionResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        RemoveTeamMemberViewModel model = new()
+        {
+            TeamId = teamId,
+            TeamMembershipId = membershipId
+        };
+
+        IActionResult result = await controller.RemoveMember(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.Null(redirect.ControllerName);
+        Assert.NotNull(redirect.RouteValues);
+        Assert.Equal(teamId, Assert.IsType<Guid>(redirect.RouteValues["teamId"]));
+        Assert.Equal("Le membre a été exclu de l’équipe.", controller.TempData["SuccessMessage"]);
+
+        Assert.NotNull(service.LastRemoveMemberRequest);
+        Assert.Equal(userId, service.LastRemoveMemberRequest.ActorUserId);
+        Assert.Equal(teamId, service.LastRemoveMemberRequest.TeamId);
+        Assert.Equal(membershipId, service.LastRemoveMemberRequest.TeamMembershipId);
+    }
+
+    [Fact]
+    public async Task RemoveMemberGet_WhenMemberCannotBeRemoved_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Owner", "A01", 3, "Joueur", true, true, false, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.RemoveMember(teamId, membershipId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(service.LastRemoveMemberRequest);
+    }
+
+    [Fact]
+    public async Task LeaveTeamPost_WhenRequestSucceeds_RedirectsToEntryDeletesCookieAndDisplaysConfirmation()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", false, false, [], []);
+        StubUserTeamService service = new([], details, leaveTeamResult: TeamMembershipActionResult.Success());
+        TeamsController controller = CreateController(service, userId, teamId);
+        LeaveTeamViewModel model = new()
+        {
+            TeamId = teamId
+        };
+
+        IActionResult result = await controller.LeaveTeam(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        string setCookie = controller.Response.Headers.SetCookie.ToString();
+
+        Assert.Equal(nameof(TeamsController.Entry), redirect.ActionName);
+        Assert.Null(redirect.ControllerName);
+        Assert.Equal("Vous avez quitté l’équipe.", controller.TempData["SuccessMessage"]);
+        Assert.Contains("EsportTeamManager.LastVisitedTeamId=;", setCookie);
+
+        Assert.NotNull(service.LastLeaveTeamRequest);
+        Assert.Equal(userId, service.LastLeaveTeamRequest.UserId);
+        Assert.Equal(teamId, service.LastLeaveTeamRequest.TeamId);
+    }
+
+    [Fact]
+    public async Task LeaveTeamGet_WhenCurrentUserIsOwner_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], []);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.LeaveTeam(teamId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(service.LastLeaveTeamRequest);
+    }
+
+    [Fact]
+    public async Task Management_WhenUserHasAccess_ReturnsPermissionAwareViewModel()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
+        TeamMemberSummary member = new(membershipId, "Member", "B02", 3, "Joueur", false, true, true, DateTimeOffset.UtcNow);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [new TeamRoleOption(1, "Manager"), new TeamRoleOption(2, "Coach"), new TeamRoleOption(3, "Joueur")], [member]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.Management(teamId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+        TeamMemberViewModel memberViewModel = Assert.Single(viewModel.Members);
+
+        Assert.Equal(teamId, viewModel.TeamId);
+        Assert.True(viewModel.CurrentUserIsOwner);
+        Assert.True(viewModel.CurrentUserCanInviteMembers);
+        Assert.False(viewModel.CurrentUserCanLeaveTeam);
+        Assert.Equal(3, viewModel.AvailableRoles.Count);
+        Assert.Equal(membershipId, memberViewModel.TeamMembershipId);
+        Assert.Equal(3, memberViewModel.TeamRoleId);
+        Assert.True(memberViewModel.CanChangeRole);
+        Assert.True(memberViewModel.CanRemove);
+    }
+
     private static TeamsController CreateController(IUserTeamService service, Guid userId, Guid? lastVisitedTeamId = null)
     {
         DefaultHttpContext httpContext = CreateHttpContext(userId, lastVisitedTeamId);
@@ -283,14 +478,26 @@ public sealed class TeamsControllerTests
         private readonly IReadOnlyCollection<UserTeamSummary> _teams;
         private readonly TeamManagementDetails? _managementDetails;
         private readonly InviteTeamMemberResult _inviteResult;
+        private readonly TeamMembershipActionResult _changeMemberRoleResult;
+        private readonly TeamMembershipActionResult _leaveTeamResult;
+        private readonly TeamMembershipActionResult _removeMemberResult;
 
         public InviteTeamMemberRequest? LastInviteRequest { get; private set; }
 
-        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null)
+        public ChangeTeamMemberRoleRequest? LastChangeMemberRoleRequest { get; private set; }
+
+        public LeaveTeamRequest? LastLeaveTeamRequest { get; private set; }
+
+        public RemoveTeamMemberRequest? LastRemoveMemberRequest { get; private set; }
+
+        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null)
         {
             _teams = teams;
             _managementDetails = managementDetails;
             _inviteResult = inviteResult ?? InviteTeamMemberResult.Denied();
+            _changeMemberRoleResult = changeMemberRoleResult ?? TeamMembershipActionResult.Denied();
+            _leaveTeamResult = leaveTeamResult ?? TeamMembershipActionResult.Denied();
+            _removeMemberResult = removeMemberResult ?? TeamMembershipActionResult.Denied();
         }
 
         public Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -319,6 +526,33 @@ public sealed class TeamsControllerTests
             LastInviteRequest = request;
 
             return Task.FromResult(_inviteResult);
+        }
+
+        public Task<TeamMembershipActionResult> ChangeMemberRoleAsync(ChangeTeamMemberRoleRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastChangeMemberRoleRequest = request;
+
+            return Task.FromResult(_changeMemberRoleResult);
+        }
+
+        public Task<TeamMembershipActionResult> LeaveTeamAsync(LeaveTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastLeaveTeamRequest = request;
+
+            return Task.FromResult(_leaveTeamResult);
+        }
+
+        public Task<TeamMembershipActionResult> RemoveMemberAsync(RemoveTeamMemberRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastRemoveMemberRequest = request;
+
+            return Task.FromResult(_removeMemberResult);
         }
     }
 

@@ -16,7 +16,11 @@ public sealed class TeamManagementDetails
 
     public bool CurrentUserCanInviteMembers { get; }
 
+    public bool CurrentUserCanLeaveTeam => !CurrentUserIsOwner;
+
     public IReadOnlyCollection<TeamRoleOption> AvailableInvitationRoles { get; }
+
+    public IReadOnlyCollection<TeamRoleOption> AvailableMemberRoles => AvailableInvitationRoles;
 
     public IReadOnlyCollection<TeamMemberSummary> Members { get; }
 

@@ -1,0 +1,69 @@
+﻿@using EsportTeamManager.Web.Models.Teams
+
+@model ChangeTeamMemberRoleViewModel
+
+@{
+    ViewData["Title"] = $"Modifier le rôle — {Model.TeamName}";
+}
+
+<section class="team-invite-page" aria-labelledby="change-role-title">
+    <header class="team-invite-header mb-4">
+        <a class="team-invite-back-link"
+           asp-controller="Teams"
+           asp-action="Management"
+           asp-route-teamId="@Model.TeamId">
+            <span aria-hidden="true">←</span>
+            Retour à @Model.TeamName
+        </a>
+
+        <h1 id="change-role-title" class="mb-2">Modifier le rôle</h1>
+        <p class="text-body-secondary mb-0">
+            Choisissez le nouveau rôle fonctionnel du membre dans l’équipe.
+        </p>
+    </header>
+
+    <section class="card team-invite-panel" aria-labelledby="change-role-form-title">
+        <div class="card-body">
+            <h2 id="change-role-form-title" class="h3 mb-2">@Model.MemberIdentity</h2>
+            <p class="text-body-secondary mb-4">
+                La propriété de l’équipe reste indépendante du rôle fonctionnel.
+            </p>
+
+            <form asp-controller="Teams" asp-action="ChangeRole" method="post">
+                <input asp-for="TeamId" type="hidden" />
+                <input asp-for="TeamMembershipId" type="hidden" />
+
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                <div class="mb-4">
+                    <label asp-for="NewTeamRoleId" class="form-label"></label>
+                    <select asp-for="NewTeamRoleId" class="form-select">
+                        <option value="0">Sélectionner un rôle</option>
+
+                        @foreach (TeamRoleOptionViewModel role in Model.AvailableRoles)
+                        {
+                            <option value="@role.TeamRoleId">@role.Label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="NewTeamRoleId" class="text-danger"></span>
+                </div>
+
+                <div class="team-invite-actions">
+                    <button type="submit" class="btn btn-primary">Enregistrer le rôle</button>
+
+                    <a class="btn btn-outline-secondary"
+                       asp-controller="Teams"
+                       asp-action="Management"
+                       asp-route-teamId="@Model.TeamId">
+                        Annuler
+                    </a>
+                </div>
+            </form>
+        </div>
+    </section>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}
