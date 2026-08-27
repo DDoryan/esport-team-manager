@@ -757,6 +757,464 @@ public sealed class UserTeamServiceTests
     }
 
     [Fact]
+    public async Task InitiateOwnershipTransferAsync_WhenOwnerSelectsActiveMember_CreatesTransferNotificationAndTrace()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, managerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        DateTimeOffset beforeInitiationUtc = DateTimeOffset.UtcNow;
+        InitiateOwnershipTransferRequest request = new(owner.Id, teamId, recipientMembership.TeamMembershipId);
+
+        OwnershipTransferActionResult result = await teamService.InitiateOwnershipTransferAsync(request);
+
+        DateTimeOffset afterInitiationUtc = DateTimeOffset.UtcNow;
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.NotNull(result.OwnershipTransferId);
+        Assert.Empty(result.Errors);
+
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+        Notification notification = await context.Notifications.AsNoTracking().SingleAsync();
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_OWNERSHIP_TRANSFER_INITIATED");
+
+        Assert.Equal(result.OwnershipTransferId, transfer.OwnershipTransferId);
+        Assert.Equal(teamId, transfer.TeamId);
+        Assert.Equal(ownerMembership.TeamMembershipId, transfer.InitiatorMembershipId);
+        Assert.Equal(recipientMembership.TeamMembershipId, transfer.RecipientMembershipId);
+        Assert.Equal(RequestStatus.Pending, transfer.Status);
+        Assert.Null(transfer.ResolvedAtUtc);
+        Assert.InRange(transfer.CreatedAtUtc, beforeInitiationUtc, afterInitiationUtc);
+
+        Assert.Equal(recipient.Id, notification.RecipientUserId);
+        Assert.Null(notification.InvitationId);
+        Assert.Equal(transfer.OwnershipTransferId, notification.OwnershipTransferId);
+        Assert.Null(notification.ReadAtUtc);
+
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(OwnershipTransfer), trace.ObjectType);
+        Assert.Equal(transfer.OwnershipTransferId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+    }
+
+    [Fact]
+    public async Task InitiateOwnershipTransferAsync_WhenActorIsNotOwner_ReturnsDenied()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser actor = await CreateActiveUserAsync(userManager, "actor@example.test", "Actor", "B02");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership actorMembership = new(Guid.NewGuid(), teamId, actor.Id, managerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.AddRange(actorMembership, recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        InitiateOwnershipTransferRequest request = new(actor.Id, teamId, recipientMembership.TeamMembershipId);
+
+        OwnershipTransferActionResult result = await teamService.InitiateOwnershipTransferAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.AccessDenied);
+        Assert.Null(result.OwnershipTransferId);
+        Assert.Empty(result.Errors);
+        Assert.Empty(await context.OwnershipTransfers.AsNoTracking().ToListAsync());
+        Assert.Empty(await context.Notifications.AsNoTracking().ToListAsync());
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_OWNERSHIP_TRANSFER_INITIATED"));
+    }
+
+    [Fact]
+    public async Task InitiateOwnershipTransferAsync_WhenTransferIsAlreadyPending_ReturnsFailure()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser firstRecipient = await CreateActiveUserAsync(userManager, "first@example.test", "FirstRecipient", "B02");
+        ApplicationUser secondRecipient = await CreateActiveUserAsync(userManager, "second@example.test", "SecondRecipient", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership firstMembership = new(Guid.NewGuid(), teamId, firstRecipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership secondMembership = new(Guid.NewGuid(), teamId, secondRecipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.AddRange(firstMembership, secondMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult firstResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, firstMembership.TeamMembershipId));
+        OwnershipTransferActionResult secondResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, secondMembership.TeamMembershipId));
+
+        Assert.True(firstResult.Succeeded);
+        Assert.False(secondResult.Succeeded);
+        Assert.False(secondResult.AccessDenied);
+        Assert.Null(secondResult.OwnershipTransferId);
+        Assert.Equal("Un transfert de propriété est déjà en attente pour cette équipe.", Assert.Single(secondResult.Errors));
+        Assert.Single(await context.OwnershipTransfers.AsNoTracking().ToListAsync());
+        Assert.Single(await context.Notifications.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task AcceptOwnershipTransferAsync_WhenRecipientIsActive_TransfersOwnershipAndKeepsFunctionalRoles()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        int ownerRoleId = ownerMembership.TeamRoleId;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, managerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult initiationResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(initiationResult.Succeeded);
+        Assert.NotNull(initiationResult.OwnershipTransferId);
+
+        ResolveOwnershipTransferRequest request = new(recipient.Id, teamId, initiationResult.OwnershipTransferId.Value);
+
+        OwnershipTransferActionResult result = await teamService.AcceptOwnershipTransferAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Equal(initiationResult.OwnershipTransferId, result.OwnershipTransferId);
+        Assert.Empty(result.Errors);
+
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+        TeamMembership unchangedOwnerMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == ownerMembership.TeamMembershipId);
+        TeamMembership unchangedRecipientMembership = await context.TeamMemberships.AsNoTracking().SingleAsync(membership => membership.TeamMembershipId == recipientMembership.TeamMembershipId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_OWNERSHIP_TRANSFER_ACCEPTED");
+
+        Assert.Equal(recipient.Id, team.OwnerUserId);
+        Assert.Equal(RequestStatus.Accepted, transfer.Status);
+        Assert.NotNull(transfer.ResolvedAtUtc);
+        Assert.Equal(ownerRoleId, unchangedOwnerMembership.TeamRoleId);
+        Assert.Equal(managerRoleId, unchangedRecipientMembership.TeamRoleId);
+        Assert.Equal(MembershipStatus.Active, unchangedOwnerMembership.Status);
+        Assert.Equal(MembershipStatus.Active, unchangedRecipientMembership.Status);
+
+        Assert.Equal(recipient.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(OwnershipTransfer), trace.ObjectType);
+        Assert.Equal(transfer.OwnershipTransferId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+    }
+
+    [Fact]
+    public async Task AcceptOwnershipTransferAsync_WhenRecipientMembershipIsInactive_ReturnsFailure()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, playerRoleId, DateTimeOffset.UtcNow.AddDays(-1));
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult initiationResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(initiationResult.Succeeded);
+        Assert.NotNull(initiationResult.OwnershipTransferId);
+
+        recipientMembership.Leave(DateTimeOffset.UtcNow);
+
+        await context.SaveChangesAsync();
+
+        ResolveOwnershipTransferRequest request = new(recipient.Id, teamId, initiationResult.OwnershipTransferId.Value);
+
+        OwnershipTransferActionResult result = await teamService.AcceptOwnershipTransferAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Null(result.OwnershipTransferId);
+        Assert.Equal("Ce transfert de propriété ne peut plus être accepté.", Assert.Single(result.Errors));
+
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+
+        Assert.Equal(owner.Id, team.OwnerUserId);
+        Assert.Equal(RequestStatus.Pending, transfer.Status);
+        Assert.Null(transfer.ResolvedAtUtc);
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_OWNERSHIP_TRANSFER_ACCEPTED"));
+    }
+
+    [Fact]
+    public async Task RefuseOwnershipTransferAsync_WhenRecipientRefuses_KeepsCurrentOwner()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult initiationResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(initiationResult.Succeeded);
+        Assert.NotNull(initiationResult.OwnershipTransferId);
+
+        OwnershipTransferActionResult result = await teamService.RefuseOwnershipTransferAsync(new ResolveOwnershipTransferRequest(recipient.Id, teamId, initiationResult.OwnershipTransferId.Value));
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Equal(initiationResult.OwnershipTransferId, result.OwnershipTransferId);
+        Assert.Empty(result.Errors);
+
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_OWNERSHIP_TRANSFER_REFUSED");
+
+        Assert.Equal(owner.Id, team.OwnerUserId);
+        Assert.Equal(RequestStatus.Refused, transfer.Status);
+        Assert.NotNull(transfer.ResolvedAtUtc);
+        Assert.Equal(recipient.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(OwnershipTransfer), trace.ObjectType);
+        Assert.Equal(transfer.OwnershipTransferId.ToString(), trace.ObjectIdentifier);
+    }
+
+    [Fact]
+    public async Task CancelOwnershipTransferAsync_WhenOwnerCancels_KeepsCurrentOwner()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult initiationResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(initiationResult.Succeeded);
+        Assert.NotNull(initiationResult.OwnershipTransferId);
+
+        OwnershipTransferActionResult result = await teamService.CancelOwnershipTransferAsync(new ResolveOwnershipTransferRequest(owner.Id, teamId, initiationResult.OwnershipTransferId.Value));
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Equal(initiationResult.OwnershipTransferId, result.OwnershipTransferId);
+        Assert.Empty(result.Errors);
+
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_OWNERSHIP_TRANSFER_CANCELLED");
+
+        Assert.Equal(owner.Id, team.OwnerUserId);
+        Assert.Equal(RequestStatus.Cancelled, transfer.Status);
+        Assert.NotNull(transfer.ResolvedAtUtc);
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(OwnershipTransfer), trace.ObjectType);
+        Assert.Equal(transfer.OwnershipTransferId.ToString(), trace.ObjectIdentifier);
+    }
+
+    [Fact]
+    public async Task ResolveOwnershipTransferAsync_WhenActorIsUnauthorized_ReturnsDenied()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateActiveUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+        ApplicationUser otherUser = await CreateActiveUserAsync(userManager, "other@example.test", "OtherUser", "C03");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult initiationResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(initiationResult.Succeeded);
+        Assert.NotNull(initiationResult.OwnershipTransferId);
+
+        Guid transferId = initiationResult.OwnershipTransferId.Value;
+        OwnershipTransferActionResult unauthorizedAcceptance = await teamService.AcceptOwnershipTransferAsync(new ResolveOwnershipTransferRequest(otherUser.Id, teamId, transferId));
+        OwnershipTransferActionResult unauthorizedCancellation = await teamService.CancelOwnershipTransferAsync(new ResolveOwnershipTransferRequest(recipient.Id, teamId, transferId));
+
+        Assert.False(unauthorizedAcceptance.Succeeded);
+        Assert.True(unauthorizedAcceptance.AccessDenied);
+        Assert.Empty(unauthorizedAcceptance.Errors);
+        Assert.False(unauthorizedCancellation.Succeeded);
+        Assert.True(unauthorizedCancellation.AccessDenied);
+        Assert.Empty(unauthorizedCancellation.Errors);
+
+        OwnershipTransfer transfer = await context.OwnershipTransfers.AsNoTracking().SingleAsync();
+        Team team = await context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == teamId);
+
+        Assert.Equal(RequestStatus.Pending, transfer.Status);
+        Assert.Null(transfer.ResolvedAtUtc);
+        Assert.Equal(owner.Id, team.OwnerUserId);
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "TEAM_OWNERSHIP_TRANSFER_ACCEPTED" || trace.ActionCode == "TEAM_OWNERSHIP_TRANSFER_CANCELLED"));
+    }
+
+    [Fact]
     public async Task ChangeMemberRoleAsync_WhenOwnerChangesOwnRole_KeepsTeamOwnership()
     {
         await using SqliteTestDatabase database = new();
@@ -1170,6 +1628,56 @@ public sealed class UserTeamServiceTests
 
         Assert.NotNull(details);
         Assert.Equal(["Owner", "ZuluMember", "AlphaMember"], details.Members.Select(member => member.Pseudo).ToArray());
+    }
+
+    [Fact]
+    public async Task GetManagementDetailsAsync_WhenOwnershipTransferIsPending_ReturnsTransferOnlyForOwner()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser recipient = await CreateUserAsync(userManager, "recipient@example.test", "Recipient", "B02");
+
+        CreateTeamResult teamResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(teamResult.Succeeded);
+        Assert.NotNull(teamResult.TeamId);
+
+        Guid teamId = teamResult.TeamId.Value;
+        int managerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Manager")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership recipientMembership = new(Guid.NewGuid(), teamId, recipient.Id, managerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(recipientMembership);
+
+        await context.SaveChangesAsync();
+
+        OwnershipTransferActionResult transferResult = await teamService.InitiateOwnershipTransferAsync(new InitiateOwnershipTransferRequest(owner.Id, teamId, recipientMembership.TeamMembershipId));
+
+        Assert.True(transferResult.Succeeded);
+        Assert.NotNull(transferResult.OwnershipTransferId);
+
+        TeamManagementDetails? ownerDetails = await teamService.GetManagementDetailsAsync(owner.Id, teamId);
+        TeamManagementDetails? recipientDetails = await teamService.GetManagementDetailsAsync(recipient.Id, teamId);
+
+        Assert.NotNull(ownerDetails);
+        Assert.NotNull(ownerDetails.PendingOwnershipTransfer);
+        Assert.Equal(transferResult.OwnershipTransferId, ownerDetails.PendingOwnershipTransfer.OwnershipTransferId);
+        Assert.Equal(recipientMembership.TeamMembershipId, ownerDetails.PendingOwnershipTransfer.RecipientMembershipId);
+        Assert.Equal("Recipient", ownerDetails.PendingOwnershipTransfer.RecipientPseudo);
+        Assert.Equal("B02", ownerDetails.PendingOwnershipTransfer.RecipientTag);
+
+        Assert.NotNull(recipientDetails);
+        Assert.Null(recipientDetails.PendingOwnershipTransfer);
     }
 
     private static ServiceProvider CreateServiceProvider(string connectionString)

@@ -22,9 +22,11 @@ public sealed class TeamManagementDetails
 
     public IReadOnlyCollection<TeamRoleOption> AvailableMemberRoles => AvailableInvitationRoles;
 
+    public PendingOwnershipTransferSummary? PendingOwnershipTransfer { get; }
+
     public IReadOnlyCollection<TeamMemberSummary> Members { get; }
 
-    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamRoleOption> availableInvitationRoles, IReadOnlyCollection<TeamMemberSummary> members)
+    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamRoleOption> availableInvitationRoles, IReadOnlyCollection<TeamMemberSummary> members, PendingOwnershipTransferSummary? pendingOwnershipTransfer = null)
     {
         TeamId = teamId;
         Name = name;
@@ -35,5 +37,6 @@ public sealed class TeamManagementDetails
         CurrentUserCanInviteMembers = currentUserCanInviteMembers;
         AvailableInvitationRoles = availableInvitationRoles;
         Members = members;
+        PendingOwnershipTransfer = pendingOwnershipTransfer;
     }
 }

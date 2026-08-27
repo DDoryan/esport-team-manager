@@ -19,7 +19,7 @@ public sealed class OwnershipTransferConfiguration : IEntityTypeConfiguration<Ow
         builder.HasKey(transfer => transfer.OwnershipTransferId);
 
         builder.Property(transfer => transfer.OwnershipTransferId).ValueGeneratedNever();
-        builder.Property(transfer => transfer.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder.Property(transfer => transfer.Status).HasConversion<string>().HasMaxLength(16).IsRequired().IsConcurrencyToken();
         builder.Property(transfer => transfer.CreatedAtUtc).IsRequired();
 
         builder.HasIndex(transfer => new { transfer.TeamId, transfer.Status }).HasDatabaseName("IX_OwnershipTransfers_TeamId_Status");

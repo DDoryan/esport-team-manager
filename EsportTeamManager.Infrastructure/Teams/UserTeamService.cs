@@ -22,6 +22,10 @@ public sealed class UserTeamService : IUserTeamService
     private const string TeamMemberRoleChangedActionCode = "TEAM_MEMBER_ROLE_CHANGED";
     private const string TeamMemberRemovedActionCode = "TEAM_MEMBER_REMOVED";
     private const string TeamMemberLeftActionCode = "TEAM_MEMBER_LEFT";
+    private const string OwnershipTransferInitiatedActionCode = "TEAM_OWNERSHIP_TRANSFER_INITIATED";
+    private const string OwnershipTransferAcceptedActionCode = "TEAM_OWNERSHIP_TRANSFER_ACCEPTED";
+    private const string OwnershipTransferCancelledActionCode = "TEAM_OWNERSHIP_TRANSFER_CANCELLED";
+    private const string OwnershipTransferRefusedActionCode = "TEAM_OWNERSHIP_TRANSFER_REFUSED";
 
     private readonly ApplicationDbContext _context;
     private readonly ILookupNormalizer _lookupNormalizer;
@@ -34,6 +38,21 @@ public sealed class UserTeamService : IUserTeamService
         _lookupNormalizer = lookupNormalizer;
         _timeProvider = timeProvider;
         _logger = logger;
+    }
+
+    public Task<OwnershipTransferActionResult> AcceptOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+    {
+        return ResolveOwnershipTransferAsync(request, RequestStatus.Accepted, cancellationToken);
+    }
+
+    public Task<OwnershipTransferActionResult> CancelOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+    {
+        return ResolveOwnershipTransferAsync(request, RequestStatus.Cancelled, cancellationToken);
+    }
+
+    public Task<OwnershipTransferActionResult> RefuseOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+    {
+        return ResolveOwnershipTransferAsync(request, RequestStatus.Refused, cancellationToken);
     }
 
     public async Task<TeamMembershipActionResult> ChangeMemberRoleAsync(ChangeTeamMemberRoleRequest request, CancellationToken cancellationToken = default)
@@ -330,7 +349,41 @@ public sealed class UserTeamService : IUserTeamService
                 member.JoinedAtUtc))
         ];
 
-        return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, currentUserIsOwner, currentUserCanInviteMembers, availableInvitationRoles, members);
+        PendingOwnershipTransferSummary? pendingOwnershipTransfer = null;
+
+        if (currentUserIsOwner)
+        {
+            var pendingTransfer = await _context.OwnershipTransfers
+                .AsNoTracking()
+                .Where(transfer => transfer.TeamId == teamId && transfer.Status == RequestStatus.Pending)
+                .Join(_context.TeamMemberships, transfer => transfer.RecipientMembershipId, membership => membership.TeamMembershipId, (transfer, membership) => new
+                {
+                    Transfer = transfer,
+                    Membership = membership
+                })
+                .Where(item => item.Membership.UserId.HasValue)
+                .Join(_context.Users, item => item.Membership.UserId!.Value, user => user.Id, (item, user) => new
+                {
+                    item.Transfer.OwnershipTransferId,
+                    item.Transfer.RecipientMembershipId,
+                    user.Pseudo,
+                    user.Tag,
+                    item.Transfer.CreatedAtUtc
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (pendingTransfer is not null)
+            {
+                pendingOwnershipTransfer = new PendingOwnershipTransferSummary(
+                    pendingTransfer.OwnershipTransferId,
+                    pendingTransfer.RecipientMembershipId,
+                    pendingTransfer.Pseudo,
+                    pendingTransfer.Tag,
+                    pendingTransfer.CreatedAtUtc);
+            }
+        }
+
+        return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, currentUserIsOwner, currentUserCanInviteMembers, availableInvitationRoles, members, pendingOwnershipTransfer);
     }
 
     public async Task<IReadOnlyCollection<UserTeamSummary>> GetTeamsForUserAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -351,6 +404,89 @@ public sealed class UserTeamService : IUserTeamService
             .ThenBy(item => item.Team.Tag)
             .Select(item => new UserTeamSummary(item.Team.TeamId, item.Team.Name, item.Team.Tag, item.Team.TimeZoneId, item.Role.Label, item.Team.OwnerUserId == userId))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<OwnershipTransferActionResult> InitiateOwnershipTransferAsync(InitiateOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.InitiatorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.RecipientMembershipId == Guid.Empty)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        var initiatorData = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == request.TeamId && membership.UserId == request.InitiatorUserId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new
+            {
+                membership.TeamMembershipId,
+                team.OwnerUserId
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (initiatorData is null || initiatorData.OwnerUserId != request.InitiatorUserId)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        var recipientData = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamMembershipId == request.RecipientMembershipId && membership.TeamId == request.TeamId && membership.Status == MembershipStatus.Active && membership.UserId.HasValue)
+            .Select(membership => new
+            {
+                membership.TeamMembershipId,
+                RecipientUserId = membership.UserId!.Value
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (recipientData is null || recipientData.RecipientUserId == request.InitiatorUserId)
+        {
+            return OwnershipTransferActionResult.Failure(["Le membre sélectionné ne peut pas recevoir la propriété."]);
+        }
+
+        bool pendingTransferExists = await _context.OwnershipTransfers
+            .AsNoTracking()
+            .AnyAsync(transfer => transfer.TeamId == request.TeamId && transfer.Status == RequestStatus.Pending, cancellationToken);
+
+        if (pendingTransferExists)
+        {
+            return OwnershipTransferActionResult.Failure(["Un transfert de propriété est déjà en attente pour cette équipe."]);
+        }
+
+        Guid ownershipTransferId = Guid.NewGuid();
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+        OwnershipTransfer ownershipTransfer;
+
+        try
+        {
+            ownershipTransfer = new OwnershipTransfer(ownershipTransferId, request.TeamId, initiatorData.TeamMembershipId, recipientData.TeamMembershipId, utcNow);
+        }
+        catch (DomainException)
+        {
+            return OwnershipTransferActionResult.Failure(["Le transfert de propriété n’a pas pu être créé."]);
+        }
+
+        Notification notification = Notification.CreateForOwnershipTransfer(Guid.NewGuid(), recipientData.RecipientUserId, ownershipTransferId, utcNow);
+        ActionTrace actionTrace = new(request.InitiatorUserId, request.TeamId, OwnershipTransferInitiatedActionCode, nameof(OwnershipTransfer), ownershipTransferId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.OwnershipTransfers.Add(ownershipTransfer);
+        _context.Notifications.Add(notification);
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Ownership transfer initiation persistence failed for initiator {InitiatorUserId}, team {TeamId}, recipient membership {RecipientMembershipId}, and transfer {OwnershipTransferId}.", request.InitiatorUserId, request.TeamId, request.RecipientMembershipId, ownershipTransferId);
+
+            return OwnershipTransferActionResult.Failure(["Le transfert de propriété n’a pas pu être enregistré. Veuillez réessayer."]);
+        }
+
+        return OwnershipTransferActionResult.Success(ownershipTransferId);
     }
 
     public async Task<InviteTeamMemberResult> InviteMemberAsync(InviteTeamMemberRequest request, CancellationToken cancellationToken = default)
@@ -614,6 +750,135 @@ public sealed class UserTeamService : IUserTeamService
         }
 
         return TeamMembershipActionResult.Success();
+    }
+
+    private async Task<OwnershipTransferActionResult> ResolveOwnershipTransferAsync(ResolveOwnershipTransferRequest request, RequestStatus finalStatus, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.OwnershipTransferId == Guid.Empty)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        if (finalStatus != RequestStatus.Accepted && finalStatus != RequestStatus.Refused && finalStatus != RequestStatus.Cancelled)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        var transferData = await _context.OwnershipTransfers
+            .Where(transfer => transfer.OwnershipTransferId == request.OwnershipTransferId && transfer.TeamId == request.TeamId)
+            .Join(_context.TeamMemberships, transfer => transfer.InitiatorMembershipId, initiatorMembership => initiatorMembership.TeamMembershipId, (transfer, initiatorMembership) => new
+            {
+                Transfer = transfer,
+                InitiatorMembership = initiatorMembership
+            })
+            .Join(_context.TeamMemberships, item => item.Transfer.RecipientMembershipId, recipientMembership => recipientMembership.TeamMembershipId, (item, recipientMembership) => new
+            {
+                item.Transfer,
+                item.InitiatorMembership,
+                RecipientMembership = recipientMembership
+            })
+            .Join(_context.Teams, item => item.Transfer.TeamId, team => team.TeamId, (item, team) => new
+            {
+                item.Transfer,
+                Team = team,
+                InitiatorUserId = item.InitiatorMembership.UserId,
+                InitiatorStatus = item.InitiatorMembership.Status,
+                RecipientUserId = item.RecipientMembership.UserId,
+                RecipientStatus = item.RecipientMembership.Status
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (transferData is null || !transferData.InitiatorUserId.HasValue || !transferData.RecipientUserId.HasValue)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        bool actorIsRecipient = transferData.RecipientUserId.Value == request.ActorUserId;
+        bool actorIsCurrentOwner = transferData.Team.OwnerUserId == request.ActorUserId;
+        bool actorIsInitiator = transferData.InitiatorUserId.Value == request.ActorUserId;
+
+        if (finalStatus == RequestStatus.Cancelled)
+        {
+            if (!actorIsCurrentOwner || !actorIsInitiator)
+            {
+                return OwnershipTransferActionResult.Denied();
+            }
+        }
+        else if (!actorIsRecipient)
+        {
+            return OwnershipTransferActionResult.Denied();
+        }
+
+        if (transferData.Transfer.Status != RequestStatus.Pending)
+        {
+            return OwnershipTransferActionResult.Failure(["Ce transfert de propriété n’est plus en attente."]);
+        }
+
+        if (finalStatus == RequestStatus.Accepted)
+        {
+            bool initiatorStillOwnsTeam = transferData.Team.OwnerUserId == transferData.InitiatorUserId.Value;
+            bool membershipsRemainActive = transferData.InitiatorStatus == MembershipStatus.Active && transferData.RecipientStatus == MembershipStatus.Active;
+
+            if (!initiatorStillOwnsTeam || !membershipsRemainActive)
+            {
+                return OwnershipTransferActionResult.Failure(["Ce transfert de propriété ne peut plus être accepté."]);
+            }
+        }
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+
+        try
+        {
+            if (finalStatus == RequestStatus.Accepted)
+            {
+                transferData.Transfer.Accept(utcNow);
+                transferData.Team.TransferOwnership(transferData.RecipientUserId.Value);
+            }
+            else if (finalStatus == RequestStatus.Refused)
+            {
+                transferData.Transfer.Refuse(utcNow);
+            }
+            else
+            {
+                transferData.Transfer.Cancel(utcNow);
+            }
+        }
+        catch (DomainException)
+        {
+            return OwnershipTransferActionResult.Failure(["Le transfert de propriété n’a pas pu être traité."]);
+        }
+
+        string actionCode = finalStatus switch
+        {
+            RequestStatus.Accepted => OwnershipTransferAcceptedActionCode,
+            RequestStatus.Refused => OwnershipTransferRefusedActionCode,
+            _ => OwnershipTransferCancelledActionCode
+        };
+        ActionTrace actionTrace = new(request.ActorUserId, request.TeamId, actionCode, nameof(OwnershipTransfer), request.OwnershipTransferId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            _logger.LogWarning(exception, "Ownership transfer {OwnershipTransferId} was resolved concurrently for team {TeamId}.", request.OwnershipTransferId, request.TeamId);
+
+            return OwnershipTransferActionResult.Failure(["Ce transfert de propriété a déjà été traité. Rechargez la page."]);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Ownership transfer resolution persistence failed for actor {ActorUserId}, team {TeamId}, transfer {OwnershipTransferId}, and status {FinalStatus}.", request.ActorUserId, request.TeamId, request.OwnershipTransferId, finalStatus);
+
+            return OwnershipTransferActionResult.Failure(["Le transfert de propriété n’a pas pu être enregistré. Veuillez réessayer."]);
+        }
+
+        return OwnershipTransferActionResult.Success(request.OwnershipTransferId);
     }
 
     private static bool TryParseRecipientIdentity(string recipientIdentity, out string pseudo, out string tag)
