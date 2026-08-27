@@ -366,3 +366,6 @@ FodyWeavers.xsd
 *.db
 *.db-shm
 *.db-wal
+
+# Private generated image storage
+/App_Data/private-images/

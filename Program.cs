@@ -19,6 +19,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using EsportTeamManager.Application.Notifications;
 using EsportTeamManager.Infrastructure.Notifications;
+using EsportTeamManager.Application.Images;
+using EsportTeamManager.Infrastructure.Images;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -121,6 +123,14 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHealthChecks();
 
+builder.Services.AddOptions<PrivateImageStorageOptions>()
+    .Bind(builder.Configuration.GetSection(PrivateImageStorageOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => options.TeamLogoMaximumEdgePixels <= options.MaximumDimensionPixels, "La dimension optimisée des logos doit respecter la dimension maximale autorisée.")
+    .Validate(options => options.StrategyImageMaximumEdgePixels <= options.MaximumDimensionPixels, "La dimension optimisée des stratégies doit respecter la dimension maximale autorisée.")
+    .Validate(options => options.ThumbnailMaximumEdgePixels <= options.TeamLogoMaximumEdgePixels && options.ThumbnailMaximumEdgePixels <= options.StrategyImageMaximumEdgePixels, "La miniature doit être plus petite que les images optimisées.")
+    .ValidateOnStart();
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
@@ -144,6 +154,7 @@ builder.Services.AddScoped<IAccountRegistrationService, AccountRegistrationServi
 builder.Services.AddScoped<IAccountAuthenticationService, AccountAuthenticationService>();
 builder.Services.AddScoped<IUserTeamService, UserTeamService>();
 builder.Services.AddScoped<IUserNotificationService, UserNotificationService>();
+builder.Services.AddScoped<IPrivateImageService, PrivateImageService>();
 builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 builder.Services.AddScoped<IActivityEditingService, ActivityEditingService>();
