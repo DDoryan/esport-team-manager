@@ -1,0 +1,73 @@
+﻿@using EsportTeamManager.Web.Models.Teams
+
+@model TransferOwnershipViewModel
+
+@{
+    ViewData["Title"] = $"Transférer la propriété — {Model.TeamName}";
+}
+
+<section class="team-invite-page" aria-labelledby="ownership-transfer-title">
+    <header class="team-invite-header mb-4">
+        <a class="team-invite-back-link"
+           asp-controller="Teams"
+           asp-action="Management"
+           asp-route-teamId="@Model.TeamId">
+            <span aria-hidden="true">←</span>
+            Retour à @Model.TeamName
+        </a>
+
+        <h1 id="ownership-transfer-title" class="mb-2">Transférer la propriété</h1>
+        <p class="text-body-secondary mb-0">
+            Proposez la propriété de l’équipe à l’un de ses membres actifs.
+        </p>
+    </header>
+
+    <section class="card team-invite-panel" aria-labelledby="ownership-transfer-form-title">
+        <div class="card-body">
+            <h2 id="ownership-transfer-form-title" class="h3 mb-4">@Model.TeamName</h2>
+
+            <div class="alert alert-warning" role="note">
+                La propriété ne changera qu’après l’acceptation du membre choisi. Votre rôle fonctionnel actuel restera inchangé.
+            </div>
+
+            <form asp-controller="Teams" asp-action="TransferOwnership" method="post">
+                <input asp-for="TeamId" type="hidden" />
+
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                <div class="mb-4">
+                    <label asp-for="RecipientMembershipId" class="form-label"></label>
+
+                    <select asp-for="RecipientMembershipId" class="form-select">
+                        <option value="">Sélectionner un membre</option>
+
+                        @foreach (OwnershipTransferRecipientOptionViewModel recipient in Model.AvailableRecipients)
+                        {
+                            <option value="@recipient.TeamMembershipId">
+                                @recipient.Pseudo#@recipient.Tag — @recipient.RoleLabel
+                            </option>
+                        }
+                    </select>
+
+                    <span asp-validation-for="RecipientMembershipId" class="text-danger"></span>
+                </div>
+
+                <div class="team-invite-actions">
+                    <button type="submit" class="btn btn-primary">Proposer le transfert</button>
+
+                    <a class="btn btn-outline-secondary"
+                       asp-controller="Teams"
+                       asp-action="Management"
+                       asp-route-teamId="@Model.TeamId">
+                        Annuler
+                    </a>
+                </div>
+            </form>
+        </div>
+    </section>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

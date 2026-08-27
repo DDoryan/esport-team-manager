@@ -442,6 +442,155 @@ public sealed class TeamsControllerTests
         Assert.True(memberViewModel.CanRemove);
     }
 
+    [Fact]
+    public async Task TransferOwnershipGet_WhenOwnerCanTransfer_ReturnsFormWithActiveRecipient()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid ownerMembershipId = Guid.NewGuid();
+        Guid recipientMembershipId = Guid.NewGuid();
+        DateTimeOffset joinedAtUtc = DateTimeOffset.UtcNow;
+        TeamMemberSummary owner = new(ownerMembershipId, "Owner", "A01", 2, "Coach", true, true, false, joinedAtUtc);
+        TeamMemberSummary recipient = new(recipientMembershipId, "Recipient", "B02", 3, "Joueur", false, true, true, joinedAtUtc.AddMinutes(1));
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], [owner, recipient]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.TransferOwnership(teamId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TransferOwnershipViewModel viewModel = Assert.IsType<TransferOwnershipViewModel>(view.Model);
+        OwnershipTransferRecipientOptionViewModel option = Assert.Single(viewModel.AvailableRecipients);
+        Assert.Equal(teamId, viewModel.TeamId);
+        Assert.Equal("Phoenix Academy", viewModel.TeamName);
+        Assert.Equal(recipientMembershipId, option.TeamMembershipId);
+        Assert.Equal("Recipient", option.Pseudo);
+        Assert.Equal("B02", option.Tag);
+        Assert.Equal("Joueur", option.RoleLabel);
+    }
+
+    [Fact]
+    public async Task TransferOwnershipPost_WhenRequestSucceeds_RedirectsToManagementAndDisplaysConfirmation()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid ownerMembershipId = Guid.NewGuid();
+        Guid recipientMembershipId = Guid.NewGuid();
+        Guid ownershipTransferId = Guid.NewGuid();
+        DateTimeOffset joinedAtUtc = DateTimeOffset.UtcNow;
+        TeamMemberSummary owner = new(ownerMembershipId, "Owner", "A01", 2, "Coach", true, true, false, joinedAtUtc);
+        TeamMemberSummary recipient = new(recipientMembershipId, "Recipient", "B02", 3, "Joueur", false, true, true, joinedAtUtc.AddMinutes(1));
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], [owner, recipient]);
+        StubUserTeamService service = new([], details, initiateOwnershipTransferResult: OwnershipTransferActionResult.Success(ownershipTransferId));
+        TeamsController controller = CreateController(service, userId);
+        TransferOwnershipViewModel model = new()
+        {
+            TeamId = teamId,
+            RecipientMembershipId = recipientMembershipId
+        };
+
+        IActionResult result = await controller.TransferOwnership(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues!["teamId"]);
+        Assert.Equal("Le transfert de propriété a été proposé avec succès.", controller.TempData["SuccessMessage"]);
+        Assert.NotNull(service.LastInitiateOwnershipTransferRequest);
+        Assert.Equal(userId, service.LastInitiateOwnershipTransferRequest.InitiatorUserId);
+        Assert.Equal(teamId, service.LastInitiateOwnershipTransferRequest.TeamId);
+        Assert.Equal(recipientMembershipId, service.LastInitiateOwnershipTransferRequest.RecipientMembershipId);
+    }
+
+    [Fact]
+    public async Task CancelOwnershipTransferPost_WhenRequestSucceeds_RedirectsToManagementAndDisplaysConfirmation()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid ownershipTransferId = Guid.NewGuid();
+        StubUserTeamService service = new([], cancelOwnershipTransferResult: OwnershipTransferActionResult.Success(ownershipTransferId));
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.CancelOwnershipTransfer(teamId, ownershipTransferId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues!["teamId"]);
+        Assert.Equal("Le transfert de propriété a été annulé.", controller.TempData["SuccessMessage"]);
+        Assert.NotNull(service.LastCancelOwnershipTransferRequest);
+        Assert.Equal(userId, service.LastCancelOwnershipTransferRequest.ActorUserId);
+        Assert.Equal(teamId, service.LastCancelOwnershipTransferRequest.TeamId);
+        Assert.Equal(ownershipTransferId, service.LastCancelOwnershipTransferRequest.OwnershipTransferId);
+    }
+
+    [Fact]
+    public async Task TransferOwnershipGet_WhenUserIsNotOwner_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", false, true, [], []);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.TransferOwnership(teamId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task TransferOwnershipPost_WhenModelIsInvalid_ReturnsRehydratedFormWithoutCreatingTransfer()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid ownerMembershipId = Guid.NewGuid();
+        Guid recipientMembershipId = Guid.NewGuid();
+        DateTimeOffset joinedAtUtc = DateTimeOffset.UtcNow;
+        TeamMemberSummary owner = new(ownerMembershipId, "Owner", "A01", 2, "Coach", true, true, false, joinedAtUtc);
+        TeamMemberSummary recipient = new(recipientMembershipId, "Recipient", "B02", 3, "Joueur", false, true, true, joinedAtUtc.AddMinutes(1));
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], [owner, recipient]);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+        TransferOwnershipViewModel model = new()
+        {
+            TeamId = teamId
+        };
+        controller.ModelState.AddModelError(nameof(TransferOwnershipViewModel.RecipientMembershipId), "Le nouveau propriétaire est obligatoire.");
+
+        IActionResult result = await controller.TransferOwnership(model, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TransferOwnershipViewModel viewModel = Assert.IsType<TransferOwnershipViewModel>(view.Model);
+        Assert.Single(viewModel.AvailableRecipients);
+        Assert.Null(service.LastInitiateOwnershipTransferRequest);
+    }
+
+    [Fact]
+    public async Task ManagementGet_WhenTransferIsPending_ProjectsTransferDetails()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid ownerMembershipId = Guid.NewGuid();
+        Guid recipientMembershipId = Guid.NewGuid();
+        Guid ownershipTransferId = Guid.NewGuid();
+        DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+        TeamMemberSummary owner = new(ownerMembershipId, "Owner", "A01", 2, "Coach", true, true, false, createdAtUtc.AddDays(-1));
+        TeamMemberSummary recipient = new(recipientMembershipId, "Recipient", "B02", 3, "Joueur", false, true, true, createdAtUtc);
+        PendingOwnershipTransferSummary pendingTransfer = new(ownershipTransferId, recipientMembershipId, "Recipient", "B02", createdAtUtc);
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], [owner, recipient], pendingTransfer);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.Management(teamId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+        Assert.NotNull(viewModel.PendingOwnershipTransfer);
+        Assert.Equal(ownershipTransferId, viewModel.PendingOwnershipTransfer.OwnershipTransferId);
+        Assert.Equal(recipientMembershipId, viewModel.PendingOwnershipTransfer.RecipientMembershipId);
+        Assert.Equal("Recipient", viewModel.PendingOwnershipTransfer.RecipientPseudo);
+        Assert.Equal("B02", viewModel.PendingOwnershipTransfer.RecipientTag);
+        Assert.Equal(createdAtUtc, viewModel.PendingOwnershipTransfer.CreatedAtUtc);
+    }
+
     private static TeamsController CreateController(IUserTeamService service, Guid userId, Guid? lastVisitedTeamId = null)
     {
         DefaultHttpContext httpContext = CreateHttpContext(userId, lastVisitedTeamId);
@@ -481,6 +630,8 @@ public sealed class TeamsControllerTests
         private readonly TeamMembershipActionResult _changeMemberRoleResult;
         private readonly TeamMembershipActionResult _leaveTeamResult;
         private readonly TeamMembershipActionResult _removeMemberResult;
+        private readonly OwnershipTransferActionResult _initiateOwnershipTransferResult;
+        private readonly OwnershipTransferActionResult _cancelOwnershipTransferResult;
 
         public InviteTeamMemberRequest? LastInviteRequest { get; private set; }
 
@@ -490,7 +641,11 @@ public sealed class TeamsControllerTests
 
         public RemoveTeamMemberRequest? LastRemoveMemberRequest { get; private set; }
 
-        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null)
+        public InitiateOwnershipTransferRequest? LastInitiateOwnershipTransferRequest { get; private set; }
+
+        public ResolveOwnershipTransferRequest? LastCancelOwnershipTransferRequest { get; private set; }
+
+        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null, OwnershipTransferActionResult? initiateOwnershipTransferResult = null, OwnershipTransferActionResult? cancelOwnershipTransferResult = null)
         {
             _teams = teams;
             _managementDetails = managementDetails;
@@ -498,6 +653,8 @@ public sealed class TeamsControllerTests
             _changeMemberRoleResult = changeMemberRoleResult ?? TeamMembershipActionResult.Denied();
             _leaveTeamResult = leaveTeamResult ?? TeamMembershipActionResult.Denied();
             _removeMemberResult = removeMemberResult ?? TeamMembershipActionResult.Denied();
+            _initiateOwnershipTransferResult = initiateOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
+            _cancelOwnershipTransferResult = cancelOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
         }
 
         public Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -553,6 +710,38 @@ public sealed class TeamsControllerTests
             LastRemoveMemberRequest = request;
 
             return Task.FromResult(_removeMemberResult);
+        }
+
+        public Task<OwnershipTransferActionResult> AcceptOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(OwnershipTransferActionResult.Denied());
+        }
+
+        public Task<OwnershipTransferActionResult> CancelOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastCancelOwnershipTransferRequest = request;
+
+            return Task.FromResult(_cancelOwnershipTransferResult);
+        }
+
+        public Task<OwnershipTransferActionResult> InitiateOwnershipTransferAsync(InitiateOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastInitiateOwnershipTransferRequest = request;
+
+            return Task.FromResult(_initiateOwnershipTransferResult);
+        }
+
+        public Task<OwnershipTransferActionResult> RefuseOwnershipTransferAsync(ResolveOwnershipTransferRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(OwnershipTransferActionResult.Denied());
         }
     }
 

@@ -111,7 +111,22 @@ public sealed class TeamsController : Controller
         [
             .. details.Members.Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.TeamRoleId, member.RoleLabel, member.IsOwner, member.CanChangeRole, member.CanRemove, member.JoinedAtUtc))
         ];
-        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members);
+
+        PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null;
+
+        if (details.PendingOwnershipTransfer is not null)
+        {
+            PendingOwnershipTransferSummary transfer = details.PendingOwnershipTransfer;
+
+            pendingOwnershipTransfer = new PendingOwnershipTransferViewModel(
+                transfer.OwnershipTransferId,
+                transfer.RecipientMembershipId,
+                transfer.RecipientPseudo,
+                transfer.RecipientTag,
+                transfer.CreatedAtUtc);
+        }
+
+        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members, pendingOwnershipTransfer);
 
         return View(viewModel);
     }
@@ -391,6 +406,135 @@ public sealed class TeamsController : Controller
     }
 
     [HttpGet]
+    public async Task<IActionResult> TransferOwnership(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, teamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserIsOwner)
+        {
+            return Forbid();
+        }
+
+        if (details.PendingOwnershipTransfer is not null || details.Members.All(member => member.IsOwner))
+        {
+            return RedirectToAction(nameof(Management), new { teamId });
+        }
+
+        TransferOwnershipViewModel viewModel = BuildTransferOwnershipViewModel(details);
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> TransferOwnership(TransferOwnershipViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (model.TeamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, model.TeamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserIsOwner)
+        {
+            return Forbid();
+        }
+
+        TransferOwnershipViewModel viewModel = BuildTransferOwnershipViewModel(details, model);
+
+        if (model.RecipientMembershipId == Guid.Empty)
+        {
+            ModelState.AddModelError(nameof(model.RecipientMembershipId), "Le nouveau propriétaire est obligatoire.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(viewModel);
+        }
+
+        InitiateOwnershipTransferRequest request = new(userId.Value, viewModel.TeamId, viewModel.RecipientMembershipId!.Value);
+        OwnershipTransferActionResult result = await _userTeamService.InitiateOwnershipTransferAsync(request, cancellationToken);
+
+        if (result.AccessDenied)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(viewModel);
+        }
+
+        TempData["SuccessMessage"] = "Le transfert de propriété a été proposé avec succès.";
+
+        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CancelOwnershipTransfer(Guid teamId, Guid ownershipTransferId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        if (ownershipTransferId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Management), new { teamId });
+        }
+
+        ResolveOwnershipTransferRequest request = new(userId.Value, teamId, ownershipTransferId);
+        OwnershipTransferActionResult result = await _userTeamService.CancelOwnershipTransferAsync(request, cancellationToken);
+
+        if (result.AccessDenied)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            TempData["ErrorMessage"] = result.Errors.FirstOrDefault() ?? "Le transfert de propriété n’a pas pu être annulé.";
+
+            return RedirectToAction(nameof(Management), new { teamId });
+        }
+
+        TempData["SuccessMessage"] = "Le transfert de propriété a été annulé.";
+
+        return RedirectToAction(nameof(Management), new { teamId });
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Invite(Guid teamId, CancellationToken cancellationToken)
     {
         Guid? userId = GetCurrentUserId();
@@ -534,6 +678,22 @@ public sealed class TeamsController : Controller
             TeamMembershipId = member.TeamMembershipId,
             MemberIdentity = $"{member.Pseudo}#{member.Tag}"
         };
+    }
+
+    private static TransferOwnershipViewModel BuildTransferOwnershipViewModel(TeamManagementDetails details, TransferOwnershipViewModel? model = null)
+    {
+        TransferOwnershipViewModel viewModel = model ?? new TransferOwnershipViewModel();
+
+        viewModel.TeamId = details.TeamId;
+        viewModel.TeamName = details.Name;
+        viewModel.AvailableRecipients =
+        [
+            .. details.Members
+            .Where(member => !member.IsOwner)
+            .Select(member => new OwnershipTransferRecipientOptionViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.RoleLabel))
+        ];
+
+        return viewModel;
     }
 
     private static InviteTeamMemberViewModel BuildInviteViewModel(TeamManagementDetails details, InviteTeamMemberViewModel? model = null)

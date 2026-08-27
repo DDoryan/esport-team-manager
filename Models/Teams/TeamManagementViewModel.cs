@@ -20,9 +20,11 @@ public sealed class TeamManagementViewModel
 
     public IReadOnlyCollection<TeamRoleOptionViewModel> AvailableRoles { get; }
 
+    public PendingOwnershipTransferViewModel? PendingOwnershipTransfer { get; }
+
     public IReadOnlyCollection<TeamMemberViewModel> Members { get; }
 
-    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, bool currentUserCanLeaveTeam, IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles, IReadOnlyCollection<TeamMemberViewModel> members)
+    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, bool currentUserCanLeaveTeam, IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles, IReadOnlyCollection<TeamMemberViewModel> members, PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null)
     {
         TeamId = teamId;
         Name = name;
@@ -34,5 +36,6 @@ public sealed class TeamManagementViewModel
         CurrentUserCanLeaveTeam = currentUserCanLeaveTeam;
         AvailableRoles = availableRoles;
         Members = members;
+        PendingOwnershipTransfer = pendingOwnershipTransfer;
     }
 }

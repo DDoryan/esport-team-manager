@@ -103,6 +103,64 @@ namespace EsportTeamManager.Tests.Domain
         }
 
         [Fact]
+        public void OwnershipTransfer_Constructor_CreatesPendingTransfer()
+        {
+            Guid transferId = Guid.NewGuid();
+            Guid teamId = Guid.NewGuid();
+            Guid initiatorMembershipId = Guid.NewGuid();
+            Guid recipientMembershipId = Guid.NewGuid();
+            DateTimeOffset createdAt = new(2026, 8, 27, 10, 0, 0, TimeSpan.FromHours(2));
+
+            OwnershipTransfer transfer = new OwnershipTransfer(transferId, teamId, initiatorMembershipId, recipientMembershipId, createdAt);
+
+            Assert.Equal(transferId, transfer.OwnershipTransferId);
+            Assert.Equal(teamId, transfer.TeamId);
+            Assert.Equal(initiatorMembershipId, transfer.InitiatorMembershipId);
+            Assert.Equal(recipientMembershipId, transfer.RecipientMembershipId);
+            Assert.Equal(RequestStatus.Pending, transfer.Status);
+            Assert.Equal(createdAt.ToUniversalTime(), transfer.CreatedAtUtc);
+            Assert.Null(transfer.ResolvedAtUtc);
+        }
+
+        [Fact]
+        public void OwnershipTransfer_Refuse_ChangesStatus()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            DateTimeOffset resolvedAtUtc = createdAtUtc.AddMinutes(5);
+            OwnershipTransfer transfer = new OwnershipTransfer(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), createdAtUtc);
+
+            transfer.Refuse(resolvedAtUtc);
+
+            Assert.Equal(RequestStatus.Refused, transfer.Status);
+            Assert.Equal(resolvedAtUtc, transfer.ResolvedAtUtc);
+        }
+
+        [Fact]
+        public void OwnershipTransfer_Cancel_ChangesStatus()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            DateTimeOffset resolvedAtUtc = createdAtUtc.AddMinutes(5);
+            OwnershipTransfer transfer = new OwnershipTransfer(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), createdAtUtc);
+
+            transfer.Cancel(resolvedAtUtc);
+
+            Assert.Equal(RequestStatus.Cancelled, transfer.Status);
+            Assert.Equal(resolvedAtUtc, transfer.ResolvedAtUtc);
+        }
+
+        [Fact]
+        public void OwnershipTransfer_ResolveTwice_ThrowsDomainException()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            OwnershipTransfer transfer = new OwnershipTransfer(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), createdAtUtc);
+            transfer.Accept(createdAtUtc.AddMinutes(5));
+
+            DomainException exception = Assert.Throws<DomainException>(() => transfer.Refuse(createdAtUtc.AddMinutes(10)));
+
+            Assert.Equal("Only a pending ownership transfer can be resolved.", exception.Message);
+        }
+
+        [Fact]
         public void OwnershipTransfer_WithSameInitiatorAndRecipient_ThrowsDomainException()
         {
             Guid membershipId = Guid.NewGuid();
