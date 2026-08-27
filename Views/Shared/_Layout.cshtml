@@ -44,6 +44,8 @@
                     <ul class="navbar-nav align-items-lg-center gap-lg-2">
                         @if (User.Identity?.IsAuthenticated == true)
                         {
+                            @await Component.InvokeAsync("NotificationNavigation")
+
                             <li class="nav-item">
                                 <form asp-controller="Account" asp-action="Logout" method="post">
                                     <button type="submit" class="btn btn-outline-secondary btn-sm">Se déconnecter</button>

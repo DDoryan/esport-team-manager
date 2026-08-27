@@ -1,0 +1,185 @@
+﻿@using EsportTeamManager.Application.Notifications
+@using EsportTeamManager.Web.Models.Notifications
+
+@model NotificationNavigationViewModel
+
+@{
+    string unreadLabel = Model.UnreadCount switch
+    {
+        0 => "Aucune notification non lue",
+        1 => "1 notification non lue",
+        _ => $"{Model.UnreadCount} notifications non lues"
+    };
+    string displayedUnreadCount = Model.UnreadCount > 99 ? "99+" : Model.UnreadCount.ToString();
+    string notificationCountLabel = Model.Notifications.Count switch
+    {
+        0 => "Aucune notification",
+        1 => "1 notification",
+        _ => $"{Model.Notifications.Count} notifications"
+    };
+    string returnUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+<li class="nav-item dropdown app-notification-navigation">
+    <button id="notification-navigation-toggle"
+            class="nav-link app-notification-navigation-link"
+            type="button"
+            data-bs-toggle="dropdown"
+            data-bs-auto-close="outside"
+            data-bs-display="static"
+            data-notification-toggle
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls="notification-navigation-panel"
+            aria-label="Notifications. @unreadLabel"
+            title="@unreadLabel">
+        <svg class="app-notification-symbol"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8"
+             stroke-linecap="round"
+             stroke-linejoin="round"
+             aria-hidden="true"
+             focusable="false">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+            <path d="M10 21h4"></path>
+        </svg>
+
+        <span class="app-notification-navigation-text">
+            Notifications
+
+            @if (Model.UnreadCount > 0)
+            {
+                <span class="app-notification-mobile-count">· @displayedUnreadCount</span>
+            }
+        </span>
+
+        @if (Model.UnreadCount > 0)
+        {
+            <span class="app-notification-count" aria-hidden="true">@displayedUnreadCount</span>
+        }
+    </button>
+
+    <section id="notification-navigation-panel"
+             class="dropdown-menu dropdown-menu-end app-notification-panel"
+             data-notification-panel
+             aria-labelledby="notification-navigation-toggle">
+        <header class="notifications-header">
+            <h2 class="h3 mb-0">Notifications</h2>
+            <span class="notifications-total" aria-label="@notificationCountLabel">
+                @Model.Notifications.Count
+            </span>
+        </header>
+
+        @if (Model.Notifications.Count == 0)
+        {
+            <div class="alert alert-secondary mb-0" role="status">
+                Vous n’avez aucune notification.
+            </div>
+        }
+        else
+        {
+            <div class="notifications-list">
+                @foreach (NotificationItemViewModel notification in Model.Notifications)
+                {
+                    string teamLabel = string.IsNullOrWhiteSpace(notification.TeamTag)
+                        ? notification.TeamName
+                        : $"{notification.TeamName} · {notification.TeamTag}";
+                    string notificationTypeLabel = notification.Kind == UserNotificationKind.Invitation
+                        ? "Invitation"
+                        : "Transfert";
+                    string statusClass = notification.StatusLabel switch
+                    {
+                        "En attente" => "notification-status-pending",
+                        "Acceptée" => "notification-status-accepted",
+                        "Refusée" => "notification-status-refused",
+                        "Annulée" => "notification-status-cancelled",
+                        _ => string.Empty
+                    };
+
+                    <article class="notification-card">
+                        <header class="notification-card-header">
+                            <h3 class="notification-card-title mb-0">
+                                @notificationTypeLabel · @teamLabel
+                            </h3>
+
+                            <span class="badge @statusClass">@notification.StatusLabel</span>
+                        </header>
+
+                        <div class="notification-card-meta">
+                            @if (notification.Kind == UserNotificationKind.Invitation)
+                            {
+                                <span>
+                                    Rôle proposé :
+                                    <strong>@notification.ProposedRoleLabel</strong>
+                                </span>
+                            }
+                            else
+                            {
+                                <span>Devenir propriétaire</span>
+                            }
+
+                            <span aria-hidden="true">·</span>
+
+                            <time datetime="@notification.CreatedAtUtc.ToString("O")">
+                                @notification.CreatedAtUtc.ToUniversalTime().ToString("dd/MM/yyyy")
+                            </time>
+                        </div>
+
+                        <p class="notification-actor mb-0">
+                            Proposée par
+                            <strong>@notification.ActorPseudo#@notification.ActorTag</strong>
+                        </p>
+
+                        @if (notification.IsPending)
+                        {
+                            <div class="notification-actions">
+                                @if (notification.Kind == UserNotificationKind.Invitation)
+                                {
+                                    <form asp-controller="Notifications" asp-action="AcceptInvitation" method="post">
+                                        <input type="hidden" name="invitationId" value="@notification.SourceId" />
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-primary btn-sm">Accepter</button>
+                                    </form>
+
+                                    <form asp-controller="Notifications" asp-action="RefuseInvitation" method="post">
+                                        <input type="hidden" name="invitationId" value="@notification.SourceId" />
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Refuser</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form asp-controller="Notifications" asp-action="AcceptOwnershipTransfer" method="post">
+                                        <input type="hidden" name="teamId" value="@notification.TeamId" />
+                                        <input type="hidden" name="ownershipTransferId" value="@notification.SourceId" />
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-primary btn-sm">Accepter</button>
+                                    </form>
+
+                                    <form asp-controller="Notifications" asp-action="RefuseOwnershipTransfer" method="post">
+                                        <input type="hidden" name="teamId" value="@notification.TeamId" />
+                                        <input type="hidden" name="ownershipTransferId" value="@notification.SourceId" />
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Refuser</button>
+                                    </form>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.UnreadCount > 0)
+        {
+            <form class="app-notification-read-form"
+                  asp-controller="Notifications"
+                  asp-action="MarkAllAsRead"
+                  method="post"
+                  data-notification-read-form>
+            </form>
+        }
+    </section>
+</li>

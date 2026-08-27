@@ -322,7 +322,7 @@ public sealed class UserTeamServiceTests
     }
 
     [Fact]
-    public async Task InviteMemberAsync_WhenOwnerInvitesActiveAccount_CreatesPendingInvitationAndTrace()
+    public async Task InviteMemberAsync_WhenOwnerInvitesActiveAccount_CreatesPendingInvitationNotificationAndTrace()
     {
         await using SqliteTestDatabase database = new();
         await database.InitializeAsync();
@@ -359,6 +359,7 @@ public sealed class UserTeamServiceTests
         Assert.Empty(result.Errors);
 
         Invitation invitation = await context.Invitations.AsNoTracking().SingleAsync(item => item.InvitationId == result.InvitationId);
+        Notification notification = await context.Notifications.AsNoTracking().SingleAsync(item => item.InvitationId == result.InvitationId);
         ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_INVITATION_CREATED");
 
         Assert.Equal(teamId, invitation.TeamId);
@@ -369,6 +370,12 @@ public sealed class UserTeamServiceTests
         Assert.Null(invitation.CreatedMembershipId);
         Assert.Null(invitation.ResolvedAtUtc);
         Assert.InRange(invitation.CreatedAtUtc, beforeInvitationUtc, afterInvitationUtc);
+
+        Assert.Equal(recipient.Id, notification.RecipientUserId);
+        Assert.Equal(invitation.InvitationId, notification.InvitationId);
+        Assert.Null(notification.OwnershipTransferId);
+        Assert.Equal(invitation.CreatedAtUtc, notification.CreatedAtUtc);
+        Assert.Null(notification.ReadAtUtc);
 
         Assert.Equal(owner.Id, trace.ActorUserId);
         Assert.Equal(teamId, trace.TeamId);
