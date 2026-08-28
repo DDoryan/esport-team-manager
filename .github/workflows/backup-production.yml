@@ -140,17 +140,18 @@ jobs:
             private-images \
             private-images.sha256
 
-          for archive_name in production-database.tar.gz production-private-images.tar.gz; do
+                    for archive_name in production-database.tar.gz production-private-images.tar.gz; do
             encrypted_name="$archive_name.enc"
             verification_name="$archive_name.verification"
 
             printf 'Chiffrement de %s.\n' "$archive_name"
 
             openssl enc \
-              -aes-256-cbc \
+              -aes-256-ctr \
               -salt \
               -pbkdf2 \
               -iter 200000 \
+              -md sha256 \
               -in "$archive_name" \
               -out "$encrypted_name" \
               -pass env:BACKUP_ENCRYPTION_PASSWORD
@@ -161,9 +162,11 @@ jobs:
 
             openssl enc \
               -decrypt \
-              -aes-256-cbc \
+              -aes-256-ctr \
+              -salt \
               -pbkdf2 \
               -iter 200000 \
+              -md sha256 \
               -in "$encrypted_name" \
               -out "$verification_name" \
               -pass env:BACKUP_ENCRYPTION_PASSWORD
