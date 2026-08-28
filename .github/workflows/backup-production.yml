@@ -18,22 +18,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
-
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+      RAILWAY_SSH_PRIVATE_KEY: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY }}
 
     steps:
       - name: Vérifier les secrets requis
         shell: bash
         run: |
-          if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "::error::Le secret RAILWAY_TOKEN est absent."
-            exit 1
-          fi
+          missing_secret=false
 
-          if [ -z "${BACKUP_ENCRYPTION_PASSWORD:-}" ]; then
-            echo "::error::Le secret BACKUP_ENCRYPTION_PASSWORD est absent."
+          for secret_name in RAILWAY_TOKEN BACKUP_ENCRYPTION_PASSWORD RAILWAY_SSH_PRIVATE_KEY; do
+            if [ -z "${!secret_name:-}" ]; then
+              printf 'Le secret %s est absent.\n' "$secret_name"
+              missing_secret=true
+            fi
+          done
+
+          if [ "$missing_secret" = true ]; then
             exit 1
           fi
 
@@ -41,149 +44,145 @@ jobs:
         id: metadata
         shell: bash
         run: |
-          backup_timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
-          backup_root="${RUNNER_TEMP}/production-backup"
+          backup_id="$(date -u '+%Y%m%dT%H%M%SZ')"
+          backup_directory="$RUNNER_TEMP/production-backup-$backup_id"
 
-          mkdir -p "${backup_root}/database"
-          mkdir -p "${backup_root}/images"
+          mkdir -p "$backup_directory"
 
-          echo "timestamp=${backup_timestamp}" >> "${GITHUB_OUTPUT}"
+          {
+            printf 'backup_id=%s\n' "$backup_id"
+            printf 'backup_directory=%s\n' "$backup_directory"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Sauvegarder PostgreSQL
         shell: bash
         run: |
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+
           npx --yes @railway/cli@latest run \
             --service Postgres \
             --environment production \
-            -- docker run \
-              --rm \
+            -- docker run --rm \
               --env DATABASE_PUBLIC_URL \
-              --volume "${RUNNER_TEMP}/production-backup/database:/backup" \
+              --volume "$backup_directory:/backup" \
               postgres:18 \
-              sh -c "pg_dump \"\${DATABASE_PUBLIC_URL}\" --format=custom --no-owner --no-privileges --file=/backup/production.dump"
+              sh -c "pg_dump \"\$DATABASE_PUBLIC_URL\" --format=custom --no-owner --no-privileges --file=/backup/production.dump"
 
       - name: Vérifier le dump PostgreSQL
         shell: bash
         run: |
-          docker run \
-            --rm \
-            --volume "${RUNNER_TEMP}/production-backup/database:/backup" \
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+
+          docker run --rm \
+            --volume "$backup_directory:/backup:ro" \
             postgres:18 \
             pg_restore --list /backup/production.dump > /dev/null
-
-          cd "${RUNNER_TEMP}/production-backup/database"
-
-          sha256sum production.dump > production.dump.sha256
-
-          tar \
-            --create \
-            --gzip \
-            --file="${RUNNER_TEMP}/production-backup/database-backup.tar.gz" \
-            production.dump \
-            production.dump.sha256
 
       - name: Sauvegarder les images privées
         shell: bash
         run: |
-          npx --yes @railway/cli@latest service files \
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+          private_image_root="/app/App_Data/private-images"
+          local_image_root="$backup_directory/private-images"
+          railway_ssh_key="$HOME/.ssh/railway_backup_production_github_actions"
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$RAILWAY_SSH_PRIVATE_KEY" > "$railway_ssh_key"
+          chmod 600 "$railway_ssh_key"
+          ssh-keygen -y -f "$railway_ssh_key" > "$railway_ssh_key.pub"
+          chmod 644 "$railway_ssh_key.pub"
+
+          trap 'rm -f "$railway_ssh_key" "$railway_ssh_key.pub"' EXIT
+
+          mkdir -p "$local_image_root/team-logos" "$local_image_root/strategy-images"
+
+          remote_listing="$(npx --yes @railway/cli@latest service files \
             --service esport-team-manager \
             --environment production \
-            download \
-            --overwrite \
-            /app/App_Data/private-images \
-            "${RUNNER_TEMP}/production-backup/images/private-images"
+            list "$private_image_root")"
 
-          cd "${RUNNER_TEMP}/production-backup/images"
+          for storage_category in team-logos strategy-images; do
+            if printf '%s\n' "$remote_listing" | grep --fixed-strings --line-regexp --quiet "$storage_category/"; then
+              rmdir "$local_image_root/$storage_category"
 
-          tar \
-            --create \
-            --gzip \
-            --file=private-images.tar.gz \
-            private-images
-
-          tar --list --gzip --file=private-images.tar.gz > /dev/null
-
-          sha256sum private-images.tar.gz > private-images.tar.gz.sha256
-
-          tar \
-            --create \
-            --gzip \
-            --file="${RUNNER_TEMP}/production-backup/private-images-backup.tar.gz" \
-            private-images.tar.gz \
-            private-images.tar.gz.sha256
+              npx --yes @railway/cli@latest service files \
+                --service esport-team-manager \
+                --environment production \
+                download --overwrite \
+                "$private_image_root/$storage_category" \
+                "$local_image_root/$storage_category"
+            fi
+          done
 
       - name: Chiffrer et contrôler les sauvegardes
         shell: bash
         run: |
-          backup_root="${RUNNER_TEMP}/production-backup"
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
 
-          openssl enc \
-            -aes-256-cbc \
-            -salt \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/database-backup.tar.gz" \
-            -out "${backup_root}/database-backup.tar.gz.enc" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
+          cd "$backup_directory"
 
-          openssl enc \
-            -aes-256-cbc \
-            -salt \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/private-images-backup.tar.gz" \
-            -out "${backup_root}/private-images-backup.tar.gz.enc" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
+          sha256sum production.dump > production.dump.sha256
+          find private-images -type f -print0 | sort --zero-terminated | xargs --null --no-run-if-empty sha256sum > private-images.sha256
 
-          openssl enc \
-            -decrypt \
-            -aes-256-cbc \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/database-backup.tar.gz.enc" \
-            -out "${backup_root}/database-backup.verification.tar.gz" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
+          tar --create --gzip \
+            --file production-database.tar.gz \
+            production.dump \
+            production.dump.sha256
 
-          openssl enc \
-            -decrypt \
-            -aes-256-cbc \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/private-images-backup.tar.gz.enc" \
-            -out "${backup_root}/private-images-backup.verification.tar.gz" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
+          tar --create --gzip \
+            --file production-private-images.tar.gz \
+            private-images \
+            private-images.sha256
 
-          cmp \
-            "${backup_root}/database-backup.tar.gz" \
-            "${backup_root}/database-backup.verification.tar.gz"
+          for archive_name in production-database.tar.gz production-private-images.tar.gz; do
+            encrypted_name="$archive_name.enc"
+            verification_name="$archive_name.verification"
 
-          cmp \
-            "${backup_root}/private-images-backup.tar.gz" \
-            "${backup_root}/private-images-backup.verification.tar.gz"
+            openssl enc \
+              -aes-256-cbc \
+              -salt \
+              -pbkdf2 \
+              -iter 200000 \
+              -in "$archive_name" \
+              -out "$encrypted_name" \
+              -pass env:BACKUP_ENCRYPTION_PASSWORD
 
-          cd "${backup_root}"
+            sha256sum "$encrypted_name" > "$encrypted_name.sha256"
 
-          sha256sum database-backup.tar.gz.enc > database-backup.tar.gz.enc.sha256
-          sha256sum private-images-backup.tar.gz.enc > private-images-backup.tar.gz.enc.sha256
+            openssl enc \
+              -decrypt \
+              -aes-256-cbc \
+              -pbkdf2 \
+              -iter 200000 \
+              -in "$encrypted_name" \
+              -out "$verification_name" \
+              -pass env:BACKUP_ENCRYPTION_PASSWORD
+
+            cmp --silent "$archive_name" "$verification_name"
+            rm -f "$archive_name" "$verification_name"
+          done
+
+          rm -f production.dump production.dump.sha256 private-images.sha256
+          rm -rf "$backup_directory/private-images"
 
       - name: Conserver la sauvegarde PostgreSQL pendant 30 jours
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: production-database-${{ steps.metadata.outputs.timestamp }}
+          name: production-database-${{ steps.metadata.outputs.backup_id }}
           path: |
-            ${{ runner.temp }}/production-backup/database-backup.tar.gz.enc
-            ${{ runner.temp }}/production-backup/database-backup.tar.gz.enc.sha256
+            ${{ steps.metadata.outputs.backup_directory }}/production-database.tar.gz.enc
+            ${{ steps.metadata.outputs.backup_directory }}/production-database.tar.gz.enc.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
       - name: Conserver la sauvegarde des images pendant 30 jours
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: production-private-images-${{ steps.metadata.outputs.timestamp }}
+          name: production-private-images-${{ steps.metadata.outputs.backup_id }}
           path: |
-            ${{ runner.temp }}/production-backup/private-images-backup.tar.gz.enc
-            ${{ runner.temp }}/production-backup/private-images-backup.tar.gz.enc.sha256
+            ${{ steps.metadata.outputs.backup_directory }}/production-private-images.tar.gz.enc
+            ${{ steps.metadata.outputs.backup_directory }}/production-private-images.tar.gz.enc.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -191,11 +190,10 @@ jobs:
       - name: Résumer la sauvegarde
         shell: bash
         run: |
-          printf '%s\n' \
-            "### Sauvegarde de production créée" \
-            "" \
-            "- Date UTC : ${{ steps.metadata.outputs.timestamp }}" \
-            "- PostgreSQL : sauvegardé, vérifié et chiffré" \
-            "- Images privées : sauvegardées, vérifiées et chiffrées" \
-            "- Conservation : 30 jours" \
-            >> "${GITHUB_STEP_SUMMARY}"
+          {
+            printf '### Sauvegarde de production réussie\n\n'
+            printf -- "- Identifiant : \`%s\`\n" "${{ steps.metadata.outputs.backup_id }}"
+            printf -- '- PostgreSQL : dump vérifié, chiffré et conservé 30 jours.\n'
+            printf -- '- Images privées : fichiers persistants vérifiés, chiffrés et conservés 30 jours.\n'
+            printf -- "- Stockages applicatifs inclus : \`team-logos\` et \`strategy-images\`.\n"
+          } >> "$GITHUB_STEP_SUMMARY"
