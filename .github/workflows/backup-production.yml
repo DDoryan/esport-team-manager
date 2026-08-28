@@ -14,188 +14,260 @@ concurrency:
 
 jobs:
   backup:
-    name: Sauvegarder PostgreSQL et les images privées
+    name: Sauvegarder PostgreSQL et les images privees
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
-
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+      RAILWAY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY_BASE64 }}
 
     steps:
-      - name: Vérifier les secrets requis
+      - name: Recuperer le depot
+        uses: actions/checkout@v6
+
+      - name: Installer Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Verifier les secrets requis
         shell: bash
         run: |
-          if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "::error::Le secret RAILWAY_TOKEN est absent."
+          missing_secret=false
+
+          for secret_name in RAILWAY_TOKEN BACKUP_ENCRYPTION_PASSWORD RAILWAY_SSH_PRIVATE_KEY_BASE64; do
+            if [ -z "${!secret_name:-}" ]; then
+              printf 'Le secret %s est absent.\n' "$secret_name"
+              missing_secret=true
+            fi
+          done
+
+          if [ "$missing_secret" = true ]; then
             exit 1
           fi
 
-          if [ -z "${BACKUP_ENCRYPTION_PASSWORD:-}" ]; then
-            echo "::error::Le secret BACKUP_ENCRYPTION_PASSWORD est absent."
-            exit 1
-          fi
-
-      - name: Préparer les métadonnées
+      - name: Preparer les metadonnees
         id: metadata
         shell: bash
         run: |
-          backup_timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
-          backup_root="${RUNNER_TEMP}/production-backup"
+          backup_id="$(date -u '+%Y%m%dT%H%M%SZ')"
+          backup_directory="$RUNNER_TEMP/production-backup-$backup_id"
 
-          mkdir -p "${backup_root}/database"
-          mkdir -p "${backup_root}/images"
+          mkdir -p "$backup_directory"
 
-          echo "timestamp=${backup_timestamp}" >> "${GITHUB_OUTPUT}"
+          {
+            printf 'backup_id=%s\n' "$backup_id"
+            printf 'backup_directory=%s\n' "$backup_directory"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Sauvegarder PostgreSQL
         shell: bash
         run: |
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+
           npx --yes @railway/cli@latest run \
             --service Postgres \
             --environment production \
-            -- docker run \
-              --rm \
+            -- docker run --rm \
               --env DATABASE_PUBLIC_URL \
-              --volume "${RUNNER_TEMP}/production-backup/database:/backup" \
+              --volume "$backup_directory:/backup" \
               postgres:18 \
-              sh -c "pg_dump \"\${DATABASE_PUBLIC_URL}\" --format=custom --no-owner --no-privileges --file=/backup/production.dump"
+              sh -c "pg_dump \"\$DATABASE_PUBLIC_URL\" --format=custom --no-owner --no-privileges --file=/backup/production.dump"
 
-      - name: Vérifier le dump PostgreSQL
+      - name: Verifier le dump PostgreSQL
         shell: bash
         run: |
-          docker run \
-            --rm \
-            --volume "${RUNNER_TEMP}/production-backup/database:/backup" \
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+
+          docker run --rm \
+            --volume "$backup_directory:/backup:ro" \
             postgres:18 \
             pg_restore --list /backup/production.dump > /dev/null
 
-          cd "${RUNNER_TEMP}/production-backup/database"
+      - name: Sauvegarder les images privees
+        id: private_images
+        shell: bash
+        run: |
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+          private_image_root="/app/App_Data/private-images"
+          local_image_root="$backup_directory/private-images"
+          railway_ssh_key="$HOME/.ssh/railway_backup_production_github_actions"
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s' "$RAILWAY_SSH_PRIVATE_KEY_BASE64" | base64 --decode > "$railway_ssh_key"
+          chmod 600 "$railway_ssh_key"
+          ssh-keygen -y -f "$railway_ssh_key" > "$railway_ssh_key.pub"
+          chmod 644 "$railway_ssh_key.pub"
+
+          cleanup_railway_key() {
+            rm -f "$railway_ssh_key" "$railway_ssh_key.pub"
+          }
+          trap cleanup_railway_key EXIT
+
+          mkdir -p "$local_image_root"
+
+          remote_listing="$(npx --yes @railway/cli@latest service files \
+            --service esport-team-manager \
+            --environment production \
+            list "$private_image_root")"
+
+          remote_file_count=0
+
+          download_remote_directory() {
+            local remote_directory="$1"
+            local local_directory="$2"
+            local directory_listing
+            local remote_entry
+            local directory_name
+
+            mkdir -p "$local_directory"
+
+            directory_listing="$(npx --yes @railway/cli@latest service files \
+              --service esport-team-manager \
+              --environment production \
+              list "$remote_directory")"
+
+            while IFS= read -r remote_entry; do
+              if [ -z "$remote_entry" ]; then
+                continue
+              fi
+
+              if [[ "$remote_entry" == */ ]]; then
+                directory_name="${remote_entry%/}"
+                download_remote_directory \
+                  "$remote_directory/$directory_name" \
+                  "$local_directory/$directory_name"
+              else
+                npx --yes @railway/cli@latest service files \
+                  --service esport-team-manager \
+                  --environment production \
+                  download --overwrite \
+                  "$remote_directory/$remote_entry" \
+                  "$local_directory/$remote_entry"
+
+                remote_file_count=$((remote_file_count + 1))
+              fi
+            done < <(printf '%s\n' "$directory_listing" | tr '[:space:]' '\n')
+          }
+
+          storage_category_count=0
+
+          while IFS= read -r root_entry; do
+            case "$root_entry" in
+              team-logos/|strategy-images/)
+                storage_category="${root_entry%/}"
+                storage_category_count=$((storage_category_count + 1))
+
+                printf 'Telechargement recursif de %s.\n' "$storage_category"
+
+                download_remote_directory \
+                  "$private_image_root/$storage_category" \
+                  "$local_image_root/$storage_category"
+                ;;
+            esac
+          done < <(printf '%s\n' "$remote_listing" | tr '[:space:]' '\n')
+
+          if [ "$storage_category_count" -eq 0 ]; then
+            printf "Aucun dossier de stockage applicatif attendu n'a ete detecte dans la liste Railway : %s\n" \
+              "$remote_listing" >&2
+            exit 1
+          fi
+
+          local_file_count="$(find "$local_image_root" -type f | wc -l)"
+
+          if [ "$remote_file_count" -ne "$local_file_count" ]; then
+            printf 'Le nombre de fichiers telecharges est different du nombre de fichiers distants : %s fichier(s) distant(s), %s fichier(s) local(aux).\n' \
+              "$remote_file_count" "$local_file_count" >&2
+            exit 1
+          fi
+
+          printf 'file_count=%s\n' "$local_file_count" >> "$GITHUB_OUTPUT"
+          printf '%s fichier(s) prive(s) persistant(s) telecharge(s).\n' "$local_file_count"
+
+      - name: Chiffrer et controler les sauvegardes
+        shell: bash
+        run: |
+          backup_directory="${{ steps.metadata.outputs.backup_directory }}"
+
+          cd "$backup_directory"
 
           sha256sum production.dump > production.dump.sha256
+          find private-images -type f -print0 | sort --zero-terminated | xargs --null --no-run-if-empty sha256sum > private-images.sha256
+          printf '%s\n' "${{ steps.private_images.outputs.file_count }}" > private-images.count
 
-          tar \
-            --create \
-            --gzip \
-            --file="${RUNNER_TEMP}/production-backup/database-backup.tar.gz" \
+          printf "Creation de l'archive PostgreSQL.\n"
+          tar --create --gzip \
+            --file production-database.tar.gz \
             production.dump \
             production.dump.sha256
 
-      - name: Sauvegarder les images privées
-        shell: bash
-        run: |
-          npx --yes @railway/cli@latest service files \
-            --service esport-team-manager \
-            --environment production \
-            download \
-            --overwrite \
-            /app/App_Data/private-images \
-            "${RUNNER_TEMP}/production-backup/images/private-images"
+          printf "Creation de l'archive des images privees.\n"
+          tar --create --gzip \
+            --file production-private-images.tar.gz \
+            private-images \
+            private-images.sha256 \
+            private-images.count
 
-          cd "${RUNNER_TEMP}/production-backup/images"
+          for archive_name in production-database.tar.gz production-private-images.tar.gz; do
+            encrypted_name="$archive_name.enc"
+            verification_name="$archive_name.verification"
 
-          tar \
-            --create \
-            --gzip \
-            --file=private-images.tar.gz \
-            private-images
+            printf 'Chiffrement authentifie de %s.\n' "$archive_name"
+            node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
+              encrypt "$archive_name" "$encrypted_name"
 
-          tar --list --gzip --file=private-images.tar.gz > /dev/null
+            sha256sum "$encrypted_name" > "$encrypted_name.sha256"
 
-          sha256sum private-images.tar.gz > private-images.tar.gz.sha256
+            printf 'Dechiffrement de controle de %s.\n' "$archive_name"
+            node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
+              decrypt "$encrypted_name" "$verification_name"
 
-          tar \
-            --create \
-            --gzip \
-            --file="${RUNNER_TEMP}/production-backup/private-images-backup.tar.gz" \
-            private-images.tar.gz \
-            private-images.tar.gz.sha256
+            if ! cmp --silent "$archive_name" "$verification_name"; then
+              original_digest="$(sha256sum "$archive_name" | cut -d ' ' -f 1)"
+              verification_digest="$(sha256sum "$verification_name" | cut -d ' ' -f 1)"
+              printf "Le dechiffrement de controle de %s differe de l'archive originale. Empreinte originale : %s. Empreinte de controle : %s.\n" \
+                "$archive_name" "$original_digest" "$verification_digest" >&2
+              exit 1
+            fi
 
-      - name: Chiffrer et contrôler les sauvegardes
-        shell: bash
-        run: |
-          backup_root="${RUNNER_TEMP}/production-backup"
+            rm -f "$archive_name" "$verification_name"
+          done
 
-          openssl enc \
-            -aes-256-cbc \
-            -salt \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/database-backup.tar.gz" \
-            -out "${backup_root}/database-backup.tar.gz.enc" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
-
-          openssl enc \
-            -aes-256-cbc \
-            -salt \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/private-images-backup.tar.gz" \
-            -out "${backup_root}/private-images-backup.tar.gz.enc" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
-
-          openssl enc \
-            -decrypt \
-            -aes-256-cbc \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/database-backup.tar.gz.enc" \
-            -out "${backup_root}/database-backup.verification.tar.gz" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
-
-          openssl enc \
-            -decrypt \
-            -aes-256-cbc \
-            -pbkdf2 \
-            -iter 200000 \
-            -in "${backup_root}/private-images-backup.tar.gz.enc" \
-            -out "${backup_root}/private-images-backup.verification.tar.gz" \
-            -pass env:BACKUP_ENCRYPTION_PASSWORD
-
-          cmp \
-            "${backup_root}/database-backup.tar.gz" \
-            "${backup_root}/database-backup.verification.tar.gz"
-
-          cmp \
-            "${backup_root}/private-images-backup.tar.gz" \
-            "${backup_root}/private-images-backup.verification.tar.gz"
-
-          cd "${backup_root}"
-
-          sha256sum database-backup.tar.gz.enc > database-backup.tar.gz.enc.sha256
-          sha256sum private-images-backup.tar.gz.enc > private-images-backup.tar.gz.enc.sha256
+          rm -f production.dump production.dump.sha256 private-images.sha256 private-images.count
+          rm -rf "$backup_directory/private-images"
 
       - name: Conserver la sauvegarde PostgreSQL pendant 30 jours
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: production-database-${{ steps.metadata.outputs.timestamp }}
+          name: production-database-${{ steps.metadata.outputs.backup_id }}
           path: |
-            ${{ runner.temp }}/production-backup/database-backup.tar.gz.enc
-            ${{ runner.temp }}/production-backup/database-backup.tar.gz.enc.sha256
+            ${{ steps.metadata.outputs.backup_directory }}/production-database.tar.gz.enc
+            ${{ steps.metadata.outputs.backup_directory }}/production-database.tar.gz.enc.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
       - name: Conserver la sauvegarde des images pendant 30 jours
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: production-private-images-${{ steps.metadata.outputs.timestamp }}
+          name: production-private-images-${{ steps.metadata.outputs.backup_id }}
           path: |
-            ${{ runner.temp }}/production-backup/private-images-backup.tar.gz.enc
-            ${{ runner.temp }}/production-backup/private-images-backup.tar.gz.enc.sha256
+            ${{ steps.metadata.outputs.backup_directory }}/production-private-images.tar.gz.enc
+            ${{ steps.metadata.outputs.backup_directory }}/production-private-images.tar.gz.enc.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
-      - name: Résumer la sauvegarde
+      - name: Resumer la sauvegarde
         shell: bash
         run: |
-          printf '%s\n' \
-            "### Sauvegarde de production créée" \
-            "" \
-            "- Date UTC : ${{ steps.metadata.outputs.timestamp }}" \
-            "- PostgreSQL : sauvegardé, vérifié et chiffré" \
-            "- Images privées : sauvegardées, vérifiées et chiffrées" \
-            "- Conservation : 30 jours" \
-            >> "${GITHUB_STEP_SUMMARY}"
+          {
+            printf '### Sauvegarde de production reussie\n\n'
+            printf -- '- Identifiant : %s\n' "${{ steps.metadata.outputs.backup_id }}"
+            printf -- '- PostgreSQL : dump verifie, chiffre avec AES-256-GCM et conserve 30 jours.\n'
+            printf -- '- Images privees : %s fichier(s) persistant(s) verifie(s), chiffre(s) avec AES-256-GCM et conserve(s) 30 jours.\n' "${{ steps.private_images.outputs.file_count }}"
+            printf -- '- Stockages applicatifs inclus : team-logos et strategy-images.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
