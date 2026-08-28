@@ -7,11 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** TEAM-009 le 26 août 2026, en 1 h 30 pour 4 h estimées.
-- **Avancement :** 27 éléments terminés sur 60 et 168 h estimées restantes.
-- **Validation :** 152 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #87 verte et production Railway validée après le déploiement manuel #7.
-- **Prochain ticket :** TEAM-004 — Inviter un compte par pseudo et tag.
-- **Projection :** déficit ramené à 29 h 30 au 6 septembre et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
+- **Dernier ticket clôturé :** TEAM-002 le 28 août 2026, en 6 h pour 6 h estimées.
+- **Avancement :** 33 éléments terminés sur 60 et 130 h estimées restantes.
+- **Validation :** 248 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #110 verte, sauvegarde PostgreSQL vérifiée et production Railway validée après le déploiement manuel #13.
+- **Prochain ticket :** QLT-008 — Automatiser les sauvegardes et effectuer une restauration réelle de la base et d’une image.
+- **Projection :** journée du 28 août encore en cours après 6 h, capacité restante de 112 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
 
 ## Architecture
 
@@ -32,6 +32,15 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - consultation sécurisée de la gestion d’équipe, membres actifs, historique d’appartenance conservé et navigation d’équipe partagée ;
 - tableau des membres sur ordinateur et cartes responsive sur mobile.
 - navigation sécurisée entre zéro, une ou plusieurs équipes, avec sélecteur partagé et dernière équipe accessible mémorisée dans un cookie minimal protégé ;
+- invitation d’un compte confirmé par identité exacte `Pseudo#tag`, avec rôles contrôlés côté serveur, réponse d’échec neutre, limite persistée de 30 invitations par heure et par expéditeur, toutes équipes confondues ;
+- index composite `Invitations(SenderUserId, CreatedAtUtc)` appliqué par migrations SQLite et PostgreSQL.
+- panneau de notifications superposé et responsive pour accepter ou refuser les invitations et transferts sans quitter la page courante ;
+- traitement privé des images PNG, JPEG et WebP par décodage réel, correction de l’orientation, suppression des métadonnées, redimensionnement maximal 512 × 512 et génération WebP ;
+- stockage des images et miniatures sous des clés aléatoires, hors de `wwwroot`, avec protections contre la traversée de chemins et nettoyage compensatoire en cas d’échec de persistance.
+- page Gestion d’équipe organisée en onglets Informations, Membres, Invitations et Propriété, sans pages de formulaire distinctes ;
+- modification réservée au propriétaire du nom, du tag, du fuseau, de la description et du logo ;
+- logo d’équipe PNG/JPEG/WebP de 2 Mo maximum et 64 × 64 pixels minimum, traité et remplacé par le stockage privé sécurisé ;
+- interface des paramètres alignée à gauche, sans défilement vertical global sur ordinateur et sans débordement horizontal global sur mobile.
 
 ## Prérequis locaux
 
@@ -75,6 +84,7 @@ Les secrets ne doivent jamais être versionnés. La production attend au minimum
 - `Brevo__ApiKey` ;
 - `Brevo__SenderEmail` ;
 - `Brevo__SenderName`.
+- `PrivateImageStorage__RootPath`, chemin absolu du stockage privé des images, hors de `wwwroot` et du dépôt source.
 
 La chaîne PostgreSQL de production comprend `GSS Encryption Mode=Disable` : le service n’utilise pas Kerberos et conserve le chiffrement TLS sans tenter de charger les bibliothèques GSS absentes du conteneur.
 
@@ -91,7 +101,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après TEAM-009 : six projets compilés sans erreur ; 152 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
+Après TEAM-002 : six projets compilés sans erreur ; 248 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
 
 ### Exécution locale des tests avec Smart App Control
 
