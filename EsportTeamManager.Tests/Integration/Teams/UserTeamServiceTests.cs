@@ -8,6 +8,7 @@ using EsportTeamManager.Tests.Integration.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Tests.Integration.Teams;
 
@@ -1687,6 +1688,169 @@ public sealed class UserTeamServiceTests
         Assert.Null(recipientDetails.PendingOwnershipTransfer);
     }
 
+    [Fact]
+    public async Task UpdateInformationAsync_WhenOwnerProvidesValidInformation_UpdatesTeamAndCreatesTrace()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        UpdateTeamInformationRequest request = new(owner.Id, teamId, "  Phoenix Elite  ", "  PHE  ", "  Équipe principale.  ", "Europe/London");
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        Team updatedTeam = await context.Teams.AsNoTracking().SingleAsync(team => team.TeamId == teamId);
+        ActionTrace trace = await context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_INFORMATION_UPDATED");
+
+        Assert.Equal("Phoenix Elite", updatedTeam.Name);
+        Assert.Equal("PHE", updatedTeam.Tag);
+        Assert.Equal("Équipe principale.", updatedTeam.Description);
+        Assert.Equal("Europe/London", updatedTeam.TimeZoneId);
+        Assert.Equal(owner.Id, trace.ActorUserId);
+        Assert.Equal(teamId, trace.TeamId);
+        Assert.Equal(nameof(Team), trace.ObjectType);
+        Assert.Equal(teamId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+    }
+
+    [Fact]
+    public async Task UpdateInformationAsync_WhenActiveMemberIsNotOwner_ReturnsDeniedAndKeepsTeamUnchanged()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser member = await CreateActiveUserAsync(userManager, "member@example.test", "Member", "B02");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        int playerRoleId = await context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership membership = new(Guid.NewGuid(), teamId, member.Id, playerRoleId, DateTimeOffset.UtcNow);
+
+        context.TeamMemberships.Add(membership);
+
+        await context.SaveChangesAsync();
+
+        UpdateTeamInformationRequest request = new(member.Id, teamId, "Unauthorized name", "BAD", "Unauthorized description", "Europe/London");
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.AccessDenied);
+
+        Team unchangedTeam = await context.Teams.AsNoTracking().SingleAsync(team => team.TeamId == teamId);
+
+        Assert.Equal("Phoenix Academy", unchangedTeam.Name);
+        Assert.Equal("PHX", unchangedTeam.Tag);
+        Assert.Null(unchangedTeam.Description);
+        Assert.Equal("Europe/Paris", unchangedTeam.TimeZoneId);
+        Assert.Empty(await context.ActionTraces.AsNoTracking().Where(trace => trace.ActionCode == "TEAM_INFORMATION_UPDATED").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("AB", "PHX", "Europe/Paris")]
+    [InlineData("Phoenix Academy", "P", "Europe/Paris")]
+    [InlineData("Phoenix Academy", "TOOLONG", "Europe/Paris")]
+    [InlineData("Phoenix Academy", "PHX", "Invalid/Zone")]
+    public async Task UpdateInformationAsync_WhenInformationIsInvalid_ReturnsFailureAndKeepsTeamUnchanged(string name, string? tag, string timeZoneId)
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        UpdateTeamInformationRequest request = new(owner.Id, teamId, name, tag, "Description valide", timeZoneId);
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.NotEmpty(result.Errors);
+
+        Team unchangedTeam = await context.Teams.AsNoTracking().SingleAsync(team => team.TeamId == teamId);
+
+        Assert.Equal("Phoenix Academy", unchangedTeam.Name);
+        Assert.Equal("PHX", unchangedTeam.Tag);
+        Assert.Null(unchangedTeam.Description);
+        Assert.Equal("Europe/Paris", unchangedTeam.TimeZoneId);
+        Assert.Empty(await context.ActionTraces.AsNoTracking().Where(trace => trace.ActionCode == "TEAM_INFORMATION_UPDATED").ToListAsync());
+    }
+
+    [Fact]
+    public async Task UpdateInformationAsync_WhenDescriptionExceedsLimit_ReturnsFailure()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        UpdateTeamInformationRequest request = new(owner.Id, teamId, "Phoenix Academy", "PHX", new string('A', 501), "Europe/Paris");
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.NotEmpty(result.Errors);
+
+        Team unchangedTeam = await context.Teams.AsNoTracking().SingleAsync(team => team.TeamId == teamId);
+
+        Assert.Null(unchangedTeam.Description);
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();
@@ -1702,9 +1866,41 @@ public sealed class UserTeamServiceTests
         .AddEntityFrameworkStores<ApplicationDbContext>();
 
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddScoped<IPrivateImageService>(_ => new StubPrivateImageService());
         services.AddScoped<IUserTeamService, UserTeamService>();
 
         return services.BuildServiceProvider();
+    }
+
+    private sealed class StubPrivateImageService : IPrivateImageService
+    {
+        public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid actorUserId, Guid teamId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<PrivateImageContent?>(null);
+        }
+
+        public Task<StorePrivateImageResult> ReplaceTeamLogoAsync(ReplaceTeamLogoRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Le remplacement du logo n’est pas utilisé par ce test."]));
+        }
+
+        public Task<StorePrivateImageResult> StoreStrategyImageAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Le stockage d’image n’est pas utilisé par ce test."]));
+        }
+
+        public Task<StorePrivateImageResult> StoreTeamLogoAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Le stockage du logo n’est pas utilisé par ce test."]));
+        }
     }
 
     private static async Task<ApplicationUser> CreateActiveUserAsync(UserManager<ApplicationUser> userManager, string email, string pseudo, string tag)

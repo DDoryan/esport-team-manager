@@ -10,6 +10,7 @@ using EsportTeamManager.Tests.Integration.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Tests.Integration.Notifications;
 
@@ -303,6 +304,7 @@ public sealed class UserNotificationServiceTests
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddScoped<IUserTeamService, UserTeamService>();
         services.AddScoped<IUserNotificationService, UserNotificationService>();
+        services.AddSingleton<IPrivateImageService, StubPrivateImageService>();
 
         return services.BuildServiceProvider();
     }
@@ -433,6 +435,29 @@ public sealed class UserNotificationServiceTests
             TeamId = teamId;
             OwnershipTransferId = ownershipTransferId;
             NotificationId = notificationId;
+        }
+    }
+
+    private sealed class StubPrivateImageService : IPrivateImageService
+    {
+        public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> ReplaceTeamLogoAsync(ReplaceTeamLogoRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> StoreStrategyImageAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> StoreTeamLogoAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
         }
     }
 }

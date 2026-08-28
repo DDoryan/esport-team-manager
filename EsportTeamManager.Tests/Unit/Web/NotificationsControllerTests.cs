@@ -278,6 +278,13 @@ public sealed class NotificationsControllerTests
         {
             return Task.FromResult(TeamMembershipActionResult.Denied());
         }
+
+        public Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(UpdateTeamInformationResult.Denied());
+        }
     }
 
     private sealed class StubTempDataProvider : ITempDataProvider

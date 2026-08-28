@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Tests.Unit.Web;
 
@@ -171,7 +172,7 @@ public sealed class TeamsControllerTests
     }
 
     [Fact]
-    public async Task InvitePost_WhenModelIsInvalid_ReturnsRehydratedFormWithoutSendingInvitation()
+    public async Task InvitePost_WhenModelIsInvalid_ReturnsManagementWithRehydratedFormWithoutSendingInvitation()
     {
         Guid userId = Guid.NewGuid();
         Guid teamId = Guid.NewGuid();
@@ -184,22 +185,25 @@ public sealed class TeamsControllerTests
             RecipientIdentity = string.Empty,
             ProposedTeamRoleId = 0
         };
+        string fieldName = $"{nameof(TeamManagementViewModel.InvitationForm)}.{nameof(InviteTeamMemberViewModel.RecipientIdentity)}";
 
-        controller.ModelState.AddModelError(nameof(InviteTeamMemberViewModel.RecipientIdentity), "L’identité du membre est obligatoire.");
+        controller.ModelState.AddModelError(fieldName, "L’identité du membre est obligatoire.");
 
         IActionResult result = await controller.Invite(model, CancellationToken.None);
 
         ViewResult view = Assert.IsType<ViewResult>(result);
-        InviteTeamMemberViewModel viewModel = Assert.IsType<InviteTeamMemberViewModel>(view.Model);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
 
-        Assert.Same(model, viewModel);
-        Assert.Equal("Phoenix Academy", viewModel.TeamName);
-        Assert.Single(viewModel.AvailableRoles);
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.InvitationForm);
+        Assert.Equal("Phoenix Academy", viewModel.InvitationForm.TeamName);
+        Assert.Single(viewModel.InvitationForm.AvailableRoles);
+        Assert.Equal("invitations", controller.ViewData["ActiveManagementSection"]);
         Assert.Null(service.LastInviteRequest);
     }
 
     [Fact]
-    public async Task InvitePost_WhenServiceReturnsFailure_RedisplaysFormWithNeutralError()
+    public async Task InvitePost_WhenServiceReturnsFailure_ReturnsManagementWithNeutralError()
     {
         Guid userId = Guid.NewGuid();
         Guid teamId = Guid.NewGuid();
@@ -217,12 +221,14 @@ public sealed class TeamsControllerTests
         IActionResult result = await controller.Invite(model, CancellationToken.None);
 
         ViewResult view = Assert.IsType<ViewResult>(result);
-        InviteTeamMemberViewModel viewModel = Assert.IsType<InviteTeamMemberViewModel>(view.Model);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
 
-        Assert.Same(model, viewModel);
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.InvitationForm);
         Assert.False(controller.ModelState.IsValid);
         Assert.Equal(errorMessage, Assert.Single(controller.ModelState[string.Empty]!.Errors).ErrorMessage);
-        Assert.Single(viewModel.AvailableRoles);
+        Assert.Single(viewModel.InvitationForm.AvailableRoles);
+        Assert.Equal("invitations", controller.ViewData["ActiveManagementSection"]);
         Assert.NotNull(service.LastInviteRequest);
     }
 
@@ -440,6 +446,12 @@ public sealed class TeamsControllerTests
         Assert.Equal(3, memberViewModel.TeamRoleId);
         Assert.True(memberViewModel.CanChangeRole);
         Assert.True(memberViewModel.CanRemove);
+        Assert.Equal(teamId, viewModel.InformationForm.TeamId);
+        Assert.Equal("Phoenix Academy", viewModel.InformationForm.TeamName);
+        Assert.Equal("Phoenix Academy", viewModel.InformationForm.Name);
+        Assert.Equal("PHX", viewModel.InformationForm.Tag);
+        Assert.Equal("Europe/Paris", viewModel.InformationForm.TimeZoneId);
+        Assert.Contains("Europe/Paris", viewModel.InformationForm.AvailableTimeZoneIds);
     }
 
     [Fact]
@@ -537,7 +549,7 @@ public sealed class TeamsControllerTests
     }
 
     [Fact]
-    public async Task TransferOwnershipPost_WhenModelIsInvalid_ReturnsRehydratedFormWithoutCreatingTransfer()
+    public async Task TransferOwnershipPost_WhenModelIsInvalid_ReturnsManagementWithRehydratedFormWithoutCreatingTransfer()
     {
         Guid userId = Guid.NewGuid();
         Guid teamId = Guid.NewGuid();
@@ -553,13 +565,20 @@ public sealed class TeamsControllerTests
         {
             TeamId = teamId
         };
-        controller.ModelState.AddModelError(nameof(TransferOwnershipViewModel.RecipientMembershipId), "Le nouveau propriétaire est obligatoire.");
+        string fieldName = $"{nameof(TeamManagementViewModel.OwnershipTransferForm)}.{nameof(TransferOwnershipViewModel.RecipientMembershipId)}";
+
+        controller.ModelState.AddModelError(fieldName, "Le nouveau propriétaire est obligatoire.");
 
         IActionResult result = await controller.TransferOwnership(model, CancellationToken.None);
 
         ViewResult view = Assert.IsType<ViewResult>(result);
-        TransferOwnershipViewModel viewModel = Assert.IsType<TransferOwnershipViewModel>(view.Model);
-        Assert.Single(viewModel.AvailableRecipients);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.OwnershipTransferForm);
+        Assert.Single(viewModel.OwnershipTransferForm.AvailableRecipients);
+        Assert.Equal("Le nouveau propriétaire est obligatoire.", Assert.Single(controller.ModelState[fieldName]!.Errors).ErrorMessage);
+        Assert.Equal("ownership", controller.ViewData["ActiveManagementSection"]);
         Assert.Null(service.LastInitiateOwnershipTransferRequest);
     }
 
@@ -591,10 +610,191 @@ public sealed class TeamsControllerTests
         Assert.Equal(createdAtUtc, viewModel.PendingOwnershipTransfer.CreatedAtUtc);
     }
 
-    private static TeamsController CreateController(IUserTeamService service, Guid userId, Guid? lastVisitedTeamId = null)
+    [Fact]
+    public async Task EditInformationGet_WhenCurrentUserIsOwner_RedirectsToManagementInformationSection()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", "Équipe principale.", "Europe/Paris", true, true, [], [], pendingOwnershipTransfer: null, hasLogo: true);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.EditInformation(teamId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.NotNull(redirect.RouteValues);
+        Assert.Equal(teamId, Assert.IsType<Guid>(redirect.RouteValues["teamId"]));
+        Assert.Equal("information", Assert.IsType<string>(redirect.RouteValues["section"]));
+    }
+
+    [Fact]
+    public async Task EditInformationGet_WhenCurrentUserIsNotOwner_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", false, false, [], []);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+
+        IActionResult result = await controller.EditInformation(teamId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task EditInformationPost_WhenRequestSucceeds_ForwardsInformationAndLogoThenRedirects()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        byte[] logoBytes = [1, 2, 3, 4];
+        await using MemoryStream logoStream = new(logoBytes);
+        FormFile logo = new(logoStream, 0, logoBytes.Length, "Logo", "phoenix-logo.png");
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, updateInformationResult: UpdateTeamInformationResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        UpdateTeamInformationViewModel model = new()
+        {
+            TeamId = teamId,
+            Name = "Phoenix Elite",
+            Tag = "PHE",
+            Description = "Nouvelle description.",
+            TimeZoneId = "Europe/London",
+            Logo = logo
+        };
+
+        IActionResult result = await controller.EditInformation(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(TeamsController.Management), redirect.ActionName);
+        Assert.NotNull(redirect.RouteValues);
+        Assert.Equal(teamId, Assert.IsType<Guid>(redirect.RouteValues["teamId"]));
+        Assert.NotNull(service.LastUpdateInformationRequest);
+        Assert.Equal(userId, service.LastUpdateInformationRequest.ActorUserId);
+        Assert.Equal(teamId, service.LastUpdateInformationRequest.TeamId);
+        Assert.Equal("information", Assert.IsType<string>(redirect.RouteValues["section"]));
+        Assert.Equal("Phoenix Elite", service.LastUpdateInformationRequest.Name);
+        Assert.Equal("PHE", service.LastUpdateInformationRequest.Tag);
+        Assert.Equal("Nouvelle description.", service.LastUpdateInformationRequest.Description);
+        Assert.Equal("Europe/London", service.LastUpdateInformationRequest.TimeZoneId);
+        Assert.Equal("phoenix-logo.png", service.LastUpdateInformationRequest.LogoFileName);
+        Assert.True(service.LastUpdateInformationRequest.HasLogo);
+        Assert.Equal("Les informations de l’équipe ont été mises à jour.", controller.TempData["SuccessMessage"]);
+    }
+
+    [Fact]
+    public async Task EditInformationPost_WhenModelIsInvalid_ReturnsManagementWithRehydratedFormWithoutUpdatingTeam()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", "Équipe principale.", "Europe/Paris", true, true, [], [], pendingOwnershipTransfer: null, hasLogo: true);
+        StubUserTeamService service = new([], details);
+        TeamsController controller = CreateController(service, userId);
+        UpdateTeamInformationViewModel model = new()
+        {
+            TeamId = teamId,
+            Name = "Ph",
+            Tag = "PHX",
+            Description = "Description conservée dans le formulaire.",
+            TimeZoneId = "Europe/Paris"
+        };
+        string fieldName = $"{nameof(TeamManagementViewModel.InformationForm)}.{nameof(UpdateTeamInformationViewModel.Name)}";
+
+        controller.ModelState.AddModelError(fieldName, "Le nom de l’équipe doit contenir entre 3 et 50 caractères.");
+
+        IActionResult result = await controller.EditInformation(model, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.InformationForm);
+        Assert.Equal("Phoenix Academy", viewModel.InformationForm.TeamName);
+        Assert.True(viewModel.InformationForm.HasCurrentLogo);
+        Assert.Contains("Europe/Paris", viewModel.InformationForm.AvailableTimeZoneIds);
+        Assert.Equal("information", controller.ViewData["ActiveManagementSection"]);
+        Assert.Null(service.LastUpdateInformationRequest);
+    }
+
+    [Fact]
+    public async Task EditInformationPost_WhenServiceReturnsFailure_ReturnsManagementWithNeutralError()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        string errorMessage = "Les informations de l’équipe n’ont pas pu être mises à jour.";
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", "Équipe principale.", "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, updateInformationResult: UpdateTeamInformationResult.Failure([errorMessage]));
+        TeamsController controller = CreateController(service, userId);
+        UpdateTeamInformationViewModel model = new()
+        {
+            TeamId = teamId,
+            Name = "Phoenix Elite",
+            Tag = "PHE",
+            Description = "Nouvelle description.",
+            TimeZoneId = "Europe/London"
+        };
+
+        IActionResult result = await controller.EditInformation(model, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.InformationForm);
+        Assert.False(controller.ModelState.IsValid);
+        Assert.Equal(errorMessage, Assert.Single(controller.ModelState[string.Empty]!.Errors).ErrorMessage);
+        Assert.Contains("Europe/London", viewModel.InformationForm.AvailableTimeZoneIds);
+        Assert.Equal("information", controller.ViewData["ActiveManagementSection"]);
+        Assert.NotNull(service.LastUpdateInformationRequest);
+    }
+
+    [Fact]
+    public async Task EditInformationPost_WhenServiceDeniesAccess_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, updateInformationResult: UpdateTeamInformationResult.Denied());
+        TeamsController controller = CreateController(service, userId);
+        UpdateTeamInformationViewModel model = new()
+        {
+            TeamId = teamId,
+            Name = "Phoenix Elite",
+            Tag = "PHE",
+            TimeZoneId = "Europe/Paris"
+        };
+
+        IActionResult result = await controller.EditInformation(model, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task Logo_WhenAuthorizedImageExists_ReturnsPrivateWebpStream()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        MemoryStream contentStream = new([1, 2, 3]);
+        PrivateImageContent imageContent = new(contentStream, "image/webp");
+        StubPrivateImageService imageService = new(imageContent);
+        StubUserTeamService teamService = new([]);
+        TeamsController controller = CreateController(teamService, userId, privateImageService: imageService);
+
+        IActionResult result = await controller.Logo(teamId, CancellationToken.None);
+
+        FileStreamResult fileResult = Assert.IsType<FileStreamResult>(result);
+
+        Assert.Same(contentStream, fileResult.FileStream);
+        Assert.Equal("image/webp", fileResult.ContentType);
+        Assert.Equal("private, no-store", controller.Response.Headers["Cache-Control"].ToString());
+    }
+
+    private static TeamsController CreateController(IUserTeamService service, Guid userId, Guid? lastVisitedTeamId = null, IPrivateImageService? privateImageService = null)
     {
         DefaultHttpContext httpContext = CreateHttpContext(userId, lastVisitedTeamId);
-        TeamsController controller = new(service)
+        TeamsController controller = new(service, privateImageService ?? new StubPrivateImageService())
         {
             ControllerContext = new ControllerContext
             {
@@ -632,6 +832,7 @@ public sealed class TeamsControllerTests
         private readonly TeamMembershipActionResult _removeMemberResult;
         private readonly OwnershipTransferActionResult _initiateOwnershipTransferResult;
         private readonly OwnershipTransferActionResult _cancelOwnershipTransferResult;
+        private readonly UpdateTeamInformationResult _updateInformationResult;
 
         public InviteTeamMemberRequest? LastInviteRequest { get; private set; }
 
@@ -645,7 +846,9 @@ public sealed class TeamsControllerTests
 
         public ResolveOwnershipTransferRequest? LastCancelOwnershipTransferRequest { get; private set; }
 
-        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null, OwnershipTransferActionResult? initiateOwnershipTransferResult = null, OwnershipTransferActionResult? cancelOwnershipTransferResult = null)
+        public UpdateTeamInformationRequest? LastUpdateInformationRequest { get; private set; }
+
+        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null, OwnershipTransferActionResult? initiateOwnershipTransferResult = null, OwnershipTransferActionResult? cancelOwnershipTransferResult = null, UpdateTeamInformationResult? updateInformationResult = null)
         {
             _teams = teams;
             _managementDetails = managementDetails;
@@ -655,6 +858,7 @@ public sealed class TeamsControllerTests
             _removeMemberResult = removeMemberResult ?? TeamMembershipActionResult.Denied();
             _initiateOwnershipTransferResult = initiateOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
             _cancelOwnershipTransferResult = cancelOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
+            _updateInformationResult = updateInformationResult ?? UpdateTeamInformationResult.Denied();
         }
 
         public Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -742,6 +946,53 @@ public sealed class TeamsControllerTests
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult(OwnershipTransferActionResult.Denied());
+        }
+
+        public Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastUpdateInformationRequest = request;
+
+            return Task.FromResult(_updateInformationResult);
+        }
+    }
+
+    private sealed class StubPrivateImageService : IPrivateImageService
+    {
+        private readonly PrivateImageContent? _teamLogo;
+
+        public StubPrivateImageService(PrivateImageContent? teamLogo = null)
+        {
+            _teamLogo = teamLogo;
+        }
+
+        public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid actorUserId, Guid teamId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(_teamLogo);
+        }
+
+        public Task<StorePrivateImageResult> ReplaceTeamLogoAsync(ReplaceTeamLogoRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Non utilisé par ce test."]));
+        }
+
+        public Task<StorePrivateImageResult> StoreStrategyImageAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Non utilisé par ce test."]));
+        }
+
+        public Task<StorePrivateImageResult> StoreTeamLogoAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(StorePrivateImageResult.Failure(["Non utilisé par ce test."]));
         }
     }
 

@@ -6,16 +6,27 @@ namespace EsportTeamManager.Domain.Entities
     public sealed class ImageFile
     {
         public Guid ImageFileId { get; private set; }
+
         public Guid? TeamLogoForTeamId { get; private set; }
+
         public Guid? StrategyImageForStrategyId { get; private set; }
+
         public string InternalFileName { get; private set; } = string.Empty;
+
         public string OriginalFileName { get; private set; } = string.Empty;
+
         public string MediaType { get; private set; } = string.Empty;
+
         public long FileSizeBytes { get; private set; }
+
         public int WidthPixels { get; private set; }
+
         public int HeightPixels { get; private set; }
+
         public string OptimizedStorageKey { get; private set; } = string.Empty;
+
         public string ThumbnailStorageKey { get; private set; } = string.Empty;
+
         public DateTimeOffset CreatedAtUtc { get; private set; }
 
         private ImageFile()
@@ -39,6 +50,25 @@ namespace EsportTeamManager.Domain.Entities
                 throw new DomainException("The strategy identifier is invalid.");
             }
 
+            ImageFileId = Guid.NewGuid();
+            TeamLogoForTeamId = teamLogoForTeamId;
+            StrategyImageForStrategyId = strategyImageForStrategyId;
+
+            ReplaceStoredContent(internalFileName, originalFileName, mediaType, fileSizeBytes, widthPixels, heightPixels, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
+        }
+
+        public static ImageFile CreateTeamLogo(Guid teamId, string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)
+        {
+            return new ImageFile(teamId, null, internalFileName, originalFileName, mediaType, fileSizeBytes, widthPixels, heightPixels, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
+        }
+
+        public static ImageFile CreateStrategyImage(Guid strategyId, string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)
+        {
+            return new ImageFile(null, strategyId, internalFileName, originalFileName, mediaType, fileSizeBytes, widthPixels, heightPixels, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
+        }
+
+        public void ReplaceStoredContent(string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)
+        {
             string normalizedInternalFileName = internalFileName?.Trim() ?? string.Empty;
             string normalizedOriginalFileName = Path.GetFileName(originalFileName?.Trim() ?? string.Empty);
             string normalizedMediaType = mediaType?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -90,9 +120,6 @@ namespace EsportTeamManager.Domain.Entities
                 throw new DomainException("The thumbnail storage key is invalid.");
             }
 
-            ImageFileId = Guid.NewGuid();
-            TeamLogoForTeamId = teamLogoForTeamId;
-            StrategyImageForStrategyId = strategyImageForStrategyId;
             InternalFileName = normalizedInternalFileName;
             OriginalFileName = normalizedOriginalFileName;
             MediaType = normalizedMediaType;
@@ -102,16 +129,6 @@ namespace EsportTeamManager.Domain.Entities
             OptimizedStorageKey = normalizedOptimizedStorageKey;
             ThumbnailStorageKey = normalizedThumbnailStorageKey;
             CreatedAtUtc = createdAtUtc.ToUniversalTime();
-        }
-
-        public static ImageFile CreateTeamLogo(Guid teamId, string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)
-        {
-            return new ImageFile(teamId, null, internalFileName, originalFileName, mediaType, fileSizeBytes, widthPixels, heightPixels, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
-        }
-
-        public static ImageFile CreateStrategyImage(Guid strategyId, string internalFileName, string originalFileName, string mediaType, long fileSizeBytes, int widthPixels, int heightPixels, string optimizedStorageKey, string thumbnailStorageKey, DateTimeOffset createdAtUtc)
-        {
-            return new ImageFile(null, strategyId, internalFileName, originalFileName, mediaType, fileSizeBytes, widthPixels, heightPixels, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
         }
     }
 }
