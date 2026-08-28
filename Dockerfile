@@ -23,8 +23,12 @@ ENV ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 
 EXPOSE 8080
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends util-linux \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
-USER $APP_UID
+USER root
 
-ENTRYPOINT ["dotnet", "EsportTeamManager.Web.dll"]
+ENTRYPOINT ["/bin/sh", "-c", "set -eu; storage_root=\"${PrivateImageStorage__RootPath:-/app/App_Data/private-images}\"; mkdir -p \"$storage_root\"; chown -R \"$APP_UID:$APP_UID\" \"$storage_root\"; chmod 0750 \"$storage_root\"; umask 0027; exec setpriv --reuid=app --regid=app --init-groups --no-new-privs dotnet EsportTeamManager.Web.dll"]
