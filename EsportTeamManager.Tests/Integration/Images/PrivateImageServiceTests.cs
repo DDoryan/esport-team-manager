@@ -15,6 +15,9 @@ using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Text;
 using Image = SixLabors.ImageSharp.Image;
+using EsportTeamManager.Application.Teams;
+using EsportTeamManager.Infrastructure.Teams;
+using Microsoft.AspNetCore.Identity;
 
 namespace EsportTeamManager.Tests.Integration.Images;
 
@@ -255,6 +258,160 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ReplaceTeamLogoAsync_WithValidImage_ReplacesFilesAndKeepsSingleDatabaseRow()
+    {
+        Team team = await AddTeamAsync();
+        byte[] initialBytes = await CreatePngAsync(900, 600);
+
+        await using MemoryStream initialContent = new(initialBytes);
+        StorePrivateImageResult initialResult = await _service.StoreTeamLogoAsync(new StorePrivateImageRequest(team.TeamId, "initial-logo.png", initialContent));
+
+        Assert.True(initialResult.Succeeded);
+
+        ImageFile initialImage = Assert.IsType<ImageFile>(initialResult.Image);
+        Guid initialImageFileId = initialImage.ImageFileId;
+        string initialOptimizedStorageKey = initialImage.OptimizedStorageKey;
+        string initialThumbnailStorageKey = initialImage.ThumbnailStorageKey;
+        string initialOptimizedPath = GetPhysicalPath(initialOptimizedStorageKey);
+        string initialThumbnailPath = GetPhysicalPath(initialThumbnailStorageKey);
+        byte[] replacementBytes = await CreatePngAsync(400, 900);
+
+        Assert.True(File.Exists(initialOptimizedPath));
+        Assert.True(File.Exists(initialThumbnailPath));
+
+        await using MemoryStream replacementContent = new(replacementBytes);
+        ReplaceTeamLogoRequest replacementRequest = new(team.OwnerUserId, team.TeamId, "replacement-logo.png", replacementContent);
+
+        StorePrivateImageResult replacementResult = await _service.ReplaceTeamLogoAsync(replacementRequest);
+
+        Assert.True(replacementResult.Succeeded);
+
+        ImageFile replacementImage = Assert.IsType<ImageFile>(replacementResult.Image);
+        ImageFile persistedImage = await _context.ImageFiles.AsNoTracking().SingleAsync(image => image.TeamLogoForTeamId == team.TeamId);
+
+        Assert.Equal(initialImageFileId, replacementImage.ImageFileId);
+        Assert.Equal(initialImageFileId, persistedImage.ImageFileId);
+        Assert.Equal("replacement-logo.png", persistedImage.OriginalFileName);
+        Assert.NotEqual(initialOptimizedStorageKey, persistedImage.OptimizedStorageKey);
+        Assert.NotEqual(initialThumbnailStorageKey, persistedImage.ThumbnailStorageKey);
+        Assert.False(File.Exists(initialOptimizedPath));
+        Assert.False(File.Exists(initialThumbnailPath));
+        Assert.True(File.Exists(GetPhysicalPath(persistedImage.OptimizedStorageKey)));
+        Assert.True(File.Exists(GetPhysicalPath(persistedImage.ThumbnailStorageKey)));
+        Assert.InRange(persistedImage.WidthPixels, 1, 512);
+        Assert.InRange(persistedImage.HeightPixels, 1, 512);
+        Assert.Equal(1, await _context.ImageFiles.CountAsync());
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
+    public async Task ReplaceTeamLogoAsync_WhenActorIsNotOwner_RejectsReplacementAndKeepsCurrentFiles()
+    {
+        Team team = await AddTeamAsync();
+        byte[] initialBytes = await CreatePngAsync(900, 600);
+
+        await using MemoryStream initialContent = new(initialBytes);
+        StorePrivateImageResult initialResult = await _service.StoreTeamLogoAsync(new StorePrivateImageRequest(team.TeamId, "initial-logo.png", initialContent));
+
+        Assert.True(initialResult.Succeeded);
+
+        ImageFile initialImage = Assert.IsType<ImageFile>(initialResult.Image);
+        string initialOptimizedStorageKey = initialImage.OptimizedStorageKey;
+        string initialThumbnailStorageKey = initialImage.ThumbnailStorageKey;
+        byte[] replacementBytes = await CreatePngAsync(512, 512);
+
+        await using MemoryStream replacementContent = new(replacementBytes);
+        ReplaceTeamLogoRequest replacementRequest = new(Guid.NewGuid(), team.TeamId, "unauthorized-logo.png", replacementContent);
+
+        StorePrivateImageResult replacementResult = await _service.ReplaceTeamLogoAsync(replacementRequest);
+
+        Assert.False(replacementResult.Succeeded);
+        Assert.Null(replacementResult.Image);
+        Assert.NotEmpty(replacementResult.Errors);
+
+        ImageFile persistedImage = await _context.ImageFiles.AsNoTracking().SingleAsync(image => image.TeamLogoForTeamId == team.TeamId);
+
+        Assert.Equal(initialImage.ImageFileId, persistedImage.ImageFileId);
+        Assert.Equal("initial-logo.png", persistedImage.OriginalFileName);
+        Assert.Equal(initialOptimizedStorageKey, persistedImage.OptimizedStorageKey);
+        Assert.Equal(initialThumbnailStorageKey, persistedImage.ThumbnailStorageKey);
+        Assert.True(File.Exists(GetPhysicalPath(initialOptimizedStorageKey)));
+        Assert.True(File.Exists(GetPhysicalPath(initialThumbnailStorageKey)));
+        Assert.Equal(1, await _context.ImageFiles.CountAsync());
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
+    public async Task ReplaceTeamLogoAsync_WithInvalidImage_KeepsCurrentDatabaseRowAndFiles()
+    {
+        Team team = await AddTeamAsync();
+        byte[] initialBytes = await CreatePngAsync(900, 600);
+
+        await using MemoryStream initialContent = new(initialBytes);
+        StorePrivateImageResult initialResult = await _service.StoreTeamLogoAsync(new StorePrivateImageRequest(team.TeamId, "initial-logo.png", initialContent));
+
+        Assert.True(initialResult.Succeeded);
+
+        ImageFile initialImage = Assert.IsType<ImageFile>(initialResult.Image);
+        string initialOptimizedStorageKey = initialImage.OptimizedStorageKey;
+        string initialThumbnailStorageKey = initialImage.ThumbnailStorageKey;
+        byte[] invalidBytes = Encoding.UTF8.GetBytes("This is not a valid image.");
+
+        await using MemoryStream invalidContent = new(invalidBytes);
+        ReplaceTeamLogoRequest replacementRequest = new(team.OwnerUserId, team.TeamId, "invalid.png", invalidContent);
+
+        StorePrivateImageResult replacementResult = await _service.ReplaceTeamLogoAsync(replacementRequest);
+
+        Assert.False(replacementResult.Succeeded);
+        Assert.Null(replacementResult.Image);
+        Assert.NotEmpty(replacementResult.Errors);
+
+        ImageFile persistedImage = await _context.ImageFiles.AsNoTracking().SingleAsync(image => image.TeamLogoForTeamId == team.TeamId);
+
+        Assert.Equal(initialImage.ImageFileId, persistedImage.ImageFileId);
+        Assert.Equal("initial-logo.png", persistedImage.OriginalFileName);
+        Assert.Equal(initialOptimizedStorageKey, persistedImage.OptimizedStorageKey);
+        Assert.Equal(initialThumbnailStorageKey, persistedImage.ThumbnailStorageKey);
+        Assert.True(File.Exists(GetPhysicalPath(initialOptimizedStorageKey)));
+        Assert.True(File.Exists(GetPhysicalPath(initialThumbnailStorageKey)));
+        Assert.Equal(2, Directory.EnumerateFiles(_storageRoot, "*", SearchOption.AllDirectories).Count());
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
+    public async Task GetTeamLogoThumbnailAsync_AllowsOnlyActiveTeamMember()
+    {
+        Team team = await AddTeamAsync();
+        int playerRoleId = await _context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership ownerMembership = new(Guid.NewGuid(), team.TeamId, team.OwnerUserId, playerRoleId, DateTimeOffset.UtcNow);
+
+        _context.TeamMemberships.Add(ownerMembership);
+
+        await _context.SaveChangesAsync();
+
+        byte[] sourceBytes = await CreatePngAsync(900, 600);
+
+        await using MemoryStream sourceContent = new(sourceBytes);
+        StorePrivateImageResult storageResult = await _service.StoreTeamLogoAsync(new StorePrivateImageRequest(team.TeamId, "logo.png", sourceContent));
+
+        Assert.True(storageResult.Succeeded);
+
+        PrivateImageContent? authorizedResult = await _service.GetTeamLogoThumbnailAsync(team.OwnerUserId, team.TeamId);
+        PrivateImageContent? unauthorizedResult = await _service.GetTeamLogoThumbnailAsync(Guid.NewGuid(), team.TeamId);
+        PrivateImageContent authorizedImage = Assert.IsType<PrivateImageContent>(authorizedResult);
+
+        await using Stream authorizedContent = authorizedImage.Content;
+
+        Assert.Equal("image/webp", authorizedImage.MediaType);
+        Assert.True(authorizedContent.CanRead);
+        Assert.True(authorizedContent.Length > 0);
+        Assert.Null(unauthorizedResult);
+    }
+
+    [Fact]
     public async Task StoreStrategyImageAsync_WithValidImage_CreatesStrategyImage()
     {
         Team team = await AddTeamAsync();
@@ -279,6 +436,68 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
         Assert.InRange(imageFile.HeightPixels, 1, 1024);
         Assert.True(File.Exists(GetPhysicalPath(imageFile.OptimizedStorageKey)));
         Assert.True(File.Exists(GetPhysicalPath(imageFile.ThumbnailStorageKey)));
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateInformationAsync_WithValidLogo_PersistsTeamLogoAndTraceTogether()
+    {
+        Team team = await AddTeamAsync();
+        UserTeamService teamService = new(_context, new UpperInvariantLookupNormalizer(), _service, TimeProvider.System, NullLogger<UserTeamService>.Instance);
+        byte[] sourceBytes = await CreatePngAsync(900, 600);
+
+        await using MemoryStream content = new(sourceBytes);
+        UpdateTeamInformationRequest request = new(team.OwnerUserId, team.TeamId, "Phoenix Elite", "PHE", "Équipe principale.", "Europe/London", "phoenix-logo.png", content);
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        Team persistedTeam = await _context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == team.TeamId);
+        ImageFile persistedImage = await _context.ImageFiles.AsNoTracking().SingleAsync(image => image.TeamLogoForTeamId == team.TeamId);
+        ActionTrace trace = await _context.ActionTraces.AsNoTracking().SingleAsync(item => item.ActionCode == "TEAM_INFORMATION_UPDATED");
+
+        Assert.Equal("Phoenix Elite", persistedTeam.Name);
+        Assert.Equal("PHE", persistedTeam.Tag);
+        Assert.Equal("Équipe principale.", persistedTeam.Description);
+        Assert.Equal("Europe/London", persistedTeam.TimeZoneId);
+        Assert.Equal("phoenix-logo.png", persistedImage.OriginalFileName);
+        Assert.True(File.Exists(GetPhysicalPath(persistedImage.OptimizedStorageKey)));
+        Assert.True(File.Exists(GetPhysicalPath(persistedImage.ThumbnailStorageKey)));
+        Assert.Equal(team.OwnerUserId, trace.ActorUserId);
+        Assert.Equal(team.TeamId, trace.TeamId);
+        Assert.Equal(nameof(Team), trace.ObjectType);
+        Assert.Equal(team.TeamId.ToString(), trace.ObjectIdentifier);
+        Assert.Equal(TraceOutcome.Succeeded, trace.Outcome);
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateInformationAsync_WithInvalidLogo_DoesNotPersistTeamChangesOrTrace()
+    {
+        Team team = await AddTeamAsync();
+        UserTeamService teamService = new(_context, new UpperInvariantLookupNormalizer(), _service, TimeProvider.System, NullLogger<UserTeamService>.Instance);
+        byte[] invalidBytes = Encoding.UTF8.GetBytes("This is not a valid image.");
+
+        await using MemoryStream content = new(invalidBytes);
+        UpdateTeamInformationRequest request = new(team.OwnerUserId, team.TeamId, "Phoenix Elite", "PHE", "Équipe principale.", "Europe/London", "invalid.png", content);
+
+        UpdateTeamInformationResult result = await teamService.UpdateInformationAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.NotEmpty(result.Errors);
+
+        Team persistedTeam = await _context.Teams.AsNoTracking().SingleAsync(item => item.TeamId == team.TeamId);
+
+        Assert.Equal("Phoenix Academy", persistedTeam.Name);
+        Assert.Equal("PHX", persistedTeam.Tag);
+        Assert.Null(persistedTeam.Description);
+        Assert.Equal("Europe/Paris", persistedTeam.TimeZoneId);
+        Assert.Empty(await _context.ImageFiles.AsNoTracking().ToListAsync());
+        Assert.Empty(await _context.ActionTraces.AsNoTracking().ToListAsync());
         AssertTemporaryDirectoryIsEmpty();
     }
 

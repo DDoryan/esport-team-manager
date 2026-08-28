@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
 using EsportTeamManager.Infrastructure.Identity;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Infrastructure.Teams;
 
@@ -26,16 +27,19 @@ public sealed class UserTeamService : IUserTeamService
     private const string OwnershipTransferAcceptedActionCode = "TEAM_OWNERSHIP_TRANSFER_ACCEPTED";
     private const string OwnershipTransferCancelledActionCode = "TEAM_OWNERSHIP_TRANSFER_CANCELLED";
     private const string OwnershipTransferRefusedActionCode = "TEAM_OWNERSHIP_TRANSFER_REFUSED";
+    private const string TeamInformationUpdatedActionCode = "TEAM_INFORMATION_UPDATED";
 
     private readonly ApplicationDbContext _context;
     private readonly ILookupNormalizer _lookupNormalizer;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<UserTeamService> _logger;
+    private readonly IPrivateImageService _privateImageService;
 
-    public UserTeamService(ApplicationDbContext context, ILookupNormalizer lookupNormalizer, TimeProvider timeProvider, ILogger<UserTeamService> logger)
+    public UserTeamService(ApplicationDbContext context, ILookupNormalizer lookupNormalizer, IPrivateImageService privateImageService, TimeProvider timeProvider, ILogger<UserTeamService> logger)
     {
         _context = context;
         _lookupNormalizer = lookupNormalizer;
+        _privateImageService = privateImageService;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -241,6 +245,102 @@ public sealed class UserTeamService : IUserTeamService
         return CreateTeamResult.Success(teamId);
     }
 
+    public async Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty)
+        {
+            return UpdateTeamInformationResult.Denied();
+        }
+
+        Team? team = await _context.Teams
+            .SingleOrDefaultAsync(candidate => candidate.TeamId == request.TeamId && candidate.OwnerUserId == request.ActorUserId, cancellationToken);
+
+        if (team is null)
+        {
+            return UpdateTeamInformationResult.Denied();
+        }
+
+        List<string> errors = [];
+        string normalizedName = request.Name?.Trim() ?? string.Empty;
+        string? normalizedTag = string.IsNullOrWhiteSpace(request.Tag) ? null : request.Tag.Trim();
+        string? normalizedDescription = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+
+        if (normalizedName.Length < 3 || normalizedName.Length > 50)
+        {
+            errors.Add("Le nom de l’équipe doit contenir entre 3 et 50 caractères.");
+        }
+
+        if (normalizedTag is not null && (normalizedTag.Length < 2 || normalizedTag.Length > 6))
+        {
+            errors.Add("Le tag de l’équipe doit contenir entre 2 et 6 caractères.");
+        }
+
+        if (normalizedDescription is not null && normalizedDescription.Length > 500)
+        {
+            errors.Add("La description de l’équipe ne peut pas dépasser 500 caractères.");
+        }
+
+        if (!IsValidIanaTimeZone(request.TimeZoneId))
+        {
+            errors.Add("Le fuseau horaire sélectionné n’est pas valide.");
+        }
+
+        bool hasLogoFileName = !string.IsNullOrWhiteSpace(request.LogoFileName);
+
+        if (hasLogoFileName != request.HasLogo)
+        {
+            errors.Add("Le fichier du logo est invalide.");
+        }
+
+        if (errors.Count > 0)
+        {
+            return UpdateTeamInformationResult.Failure(errors);
+        }
+
+        try
+        {
+            team.UpdateInformation(normalizedName, normalizedTag, normalizedDescription, request.TimeZoneId);
+        }
+        catch (DomainException)
+        {
+            return UpdateTeamInformationResult.Failure(["Les informations de l’équipe ne sont pas valides."]);
+        }
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+        ActionTrace actionTrace = new(request.ActorUserId, request.TeamId, TeamInformationUpdatedActionCode, nameof(Team), request.TeamId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        if (request.HasLogo)
+        {
+            ReplaceTeamLogoRequest logoRequest = new(request.ActorUserId, request.TeamId, request.LogoFileName!, request.LogoContent!);
+            StorePrivateImageResult logoResult = await _privateImageService.ReplaceTeamLogoAsync(logoRequest, cancellationToken);
+
+            if (!logoResult.Succeeded)
+            {
+                return UpdateTeamInformationResult.Failure(logoResult.Errors);
+            }
+
+            return UpdateTeamInformationResult.Success();
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(exception, "Team information update persistence failed for actor {ActorUserId} and team {TeamId}.", request.ActorUserId, request.TeamId);
+
+            return UpdateTeamInformationResult.Failure(["Les informations de l’équipe n’ont pas pu être enregistrées. Veuillez réessayer."]);
+        }
+
+        return UpdateTeamInformationResult.Success();
+    }
+
     public async Task<TeamManagementDetails?> GetManagementDetailsAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -274,6 +374,10 @@ public sealed class UserTeamService : IUserTeamService
         {
             return null;
         }
+
+        bool hasLogo = await _context.ImageFiles
+            .AsNoTracking()
+            .AnyAsync(image => image.TeamLogoForTeamId == teamId, cancellationToken);
 
         bool currentUserIsOwner = teamData.OwnerUserId == userId;
         bool currentUserIsManager = teamData.CurrentUserRoleCode == ManagerRoleCode;
@@ -383,7 +487,7 @@ public sealed class UserTeamService : IUserTeamService
             }
         }
 
-        return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, currentUserIsOwner, currentUserCanInviteMembers, availableInvitationRoles, members, pendingOwnershipTransfer);
+        return new TeamManagementDetails(teamData.TeamId, teamData.Name, teamData.Tag, teamData.Description, teamData.TimeZoneId, currentUserIsOwner, currentUserCanInviteMembers, availableInvitationRoles, members, pendingOwnershipTransfer, hasLogo);
     }
 
     public async Task<IReadOnlyCollection<UserTeamSummary>> GetTeamsForUserAsync(Guid userId, CancellationToken cancellationToken = default)

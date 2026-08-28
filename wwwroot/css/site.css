@@ -1688,6 +1688,81 @@ html.activity-edit-fixed-page .activity-edit-page
     justify-content: space-between;
 }
 
+@media (min-width: 992px)
+{
+    html.team-management-fixed-page,
+    html.team-management-fixed-page body
+    {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    html.team-management-fixed-page .app-shell
+    {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    html.team-management-fixed-page .app-main
+    {
+        min-height: 0;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        overflow: hidden;
+    }
+
+    html.team-management-fixed-page .team-management-page
+    {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    html.team-management-fixed-page .team-management-header
+    {
+        margin-bottom: 1rem !important;
+        flex: 0 0 auto;
+    }
+
+    html.team-management-fixed-page .team-management-tabs-shell
+    {
+        margin-bottom: 1rem !important;
+        flex: 0 0 auto;
+    }
+
+    html.team-management-fixed-page .team-information-panel .card-body
+    {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    html.team-management-fixed-page .team-information-header
+    {
+        margin-bottom: 0.75rem;
+    }
+
+    html.team-management-fixed-page .team-information-logo-section
+    {
+        padding-bottom: 0.75rem;
+    }
+
+    html.team-management-fixed-page .team-information-form-grid
+    {
+        gap: 0.6rem 1.5rem;
+        margin-top: 0.75rem;
+    }
+
+    html.team-management-fixed-page .team-information-description-control
+    {
+        min-height: 3.5rem;
+        resize: none;
+    }
+
+    html.team-management-fixed-page .team-information-actions
+    {
+        margin-top: 0.75rem;
+    }
+}
+
 .team-members-panel
 {
     min-width: 0;
@@ -2360,4 +2435,322 @@ html.activity-edit-fixed-page .activity-edit-page
     width: 0;
     height: 0;
     display: none;
+}
+
+.team-information-panel
+{
+    width: 100%;
+    min-width: 0;
+}
+
+.team-information-panel .card-body
+{
+    padding: 1.5rem;
+}
+
+.team-information-form
+{
+    width: 100%;
+    max-width: 78rem;
+    margin-right: auto;
+}
+
+.team-information-header
+{
+    margin-bottom: 1.25rem;
+}
+
+.team-information-logo-section
+{
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: 1.5rem;
+    padding-bottom: 1.25rem;
+    align-items: center;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.team-logo-frame
+{
+    display: flex;
+    overflow: hidden;
+    width: 7rem;
+    height: 7rem;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: var(--app-surface-elevated);
+}
+
+.team-logo-image
+{
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.team-logo-fallback
+{
+    color: var(--bs-primary);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.team-information-logo-details
+{
+    display: flex;
+    min-width: 0;
+    max-width: 38rem;
+    gap: 0.5rem;
+    flex-direction: column;
+}
+
+.team-information-logo-input
+{
+    width: 100%;
+}
+
+.team-information-logo-help
+{
+    line-height: 1.35;
+}
+
+.team-information-form-grid
+{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.5rem;
+    margin-top: 1.25rem;
+}
+
+.team-information-field
+{
+    display: flex;
+    min-width: 0;
+    gap: 0.3rem;
+    flex-direction: column;
+}
+
+.team-information-field-label
+{
+    color: var(--app-text-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.team-information-control
+{
+    min-height: 2.5rem;
+    padding: 0.4rem 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--app-border) !important;
+    border-radius: 0 !important;
+    background-color: transparent !important;
+    color: var(--app-text) !important;
+    box-shadow: none !important;
+}
+
+.team-information-control:hover
+{
+    border-bottom-color: var(--app-text-muted) !important;
+}
+
+.team-information-control:focus
+{
+    border-bottom-color: var(--app-primary) !important;
+    background-color: transparent !important;
+    box-shadow: 0 1px 0 var(--app-primary) !important;
+}
+
+select.team-information-control option
+{
+    background-color: var(--app-surface);
+    color: var(--app-text);
+}
+
+.team-information-control.input-validation-error
+{
+    border-bottom-color: #ef4444 !important;
+    box-shadow: 0 1px 0 #ef4444 !important;
+}
+
+.team-information-readonly-value
+{
+    min-height: 2.5rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--app-border);
+    color: var(--app-text);
+    overflow-wrap: anywhere;
+}
+
+.team-information-time-zone
+{
+    grid-column: 1;
+}
+
+.team-information-form-description
+{
+    grid-column: 1 / -1;
+}
+
+.team-information-description-control
+{
+    min-height: 4.5rem;
+    padding-top: 0.6rem !important;
+    resize: vertical;
+}
+
+.team-information-readonly-description
+{
+    min-height: 4.5rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.team-information-actions
+{
+    display: flex;
+    margin-top: 1.25rem;
+    justify-content: flex-start;
+}
+
+@media (max-width: 767.98px)
+{
+    .team-information-panel .card-body
+    {
+        padding: 1rem;
+    }
+
+    .team-information-logo-section
+    {
+        grid-template-columns: 5.5rem minmax(0, 1fr);
+        gap: 1rem;
+    }
+
+    .team-logo-frame
+    {
+        width: 5.5rem;
+        height: 5.5rem;
+    }
+
+    .team-information-form-grid
+    {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .team-information-form-description
+    {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 575.98px)
+{
+    .team-information-logo-section
+    {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .team-information-form-grid
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .team-information-form-description
+    {
+        grid-column: auto;
+    }
+
+    .team-information-actions
+    {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .team-information-actions .btn
+    {
+        width: 100%;
+    }
+}
+
+.team-management-tabs-shell
+{
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 0.5rem;
+    background: var(--app-surface);
+    overscroll-behavior-x: contain;
+}
+
+.team-management-tabs
+{
+    display: flex;
+    min-width: max-content;
+}
+
+.team-management-tab
+{
+    position: relative;
+    padding: 0.9rem 1.25rem;
+    color: var(--app-text-muted);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.team-management-tab:hover
+{
+    background: var(--app-surface-elevated);
+    color: var(--app-primary-hover);
+}
+
+.team-management-tab:focus-visible
+{
+    z-index: 1;
+    outline: 3px solid var(--app-focus);
+    outline-offset: -3px;
+}
+
+.team-management-tab-active
+{
+    background: var(--app-surface-elevated);
+    color: var(--app-primary);
+    box-shadow: inset 0 -3px 0 var(--app-primary);
+}
+
+.team-management-section
+{
+    min-width: 0;
+}
+
+.team-management-form
+{
+    width: 100%;
+    max-width: 42rem;
+}
+
+.team-management-form-header
+{
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 575.98px)
+{
+    .team-management-tabs-shell
+    {
+        margin-right: -0.25rem;
+        margin-left: -0.25rem;
+    }
+
+    .team-management-tab
+    {
+        padding: 0.85rem 1rem;
+    }
 }

@@ -18,6 +18,8 @@ public sealed class TeamManagementDetails
 
     public bool CurrentUserCanLeaveTeam => !CurrentUserIsOwner;
 
+    public bool HasLogo { get; }
+
     public IReadOnlyCollection<TeamRoleOption> AvailableInvitationRoles { get; }
 
     public IReadOnlyCollection<TeamRoleOption> AvailableMemberRoles => AvailableInvitationRoles;
@@ -26,7 +28,7 @@ public sealed class TeamManagementDetails
 
     public IReadOnlyCollection<TeamMemberSummary> Members { get; }
 
-    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamRoleOption> availableInvitationRoles, IReadOnlyCollection<TeamMemberSummary> members, PendingOwnershipTransferSummary? pendingOwnershipTransfer = null)
+    public TeamManagementDetails(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, IReadOnlyCollection<TeamRoleOption> availableInvitationRoles, IReadOnlyCollection<TeamMemberSummary> members, PendingOwnershipTransferSummary? pendingOwnershipTransfer = null, bool hasLogo = false)
     {
         TeamId = teamId;
         Name = name;
@@ -38,5 +40,6 @@ public sealed class TeamManagementDetails
         AvailableInvitationRoles = availableInvitationRoles;
         Members = members;
         PendingOwnershipTransfer = pendingOwnershipTransfer;
+        HasLogo = hasLogo;
     }
 }

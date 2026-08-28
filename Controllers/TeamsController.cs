@@ -4,6 +4,7 @@ using EsportTeamManager.Web.Models.Teams;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using EsportTeamManager.Web.Navigation;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Web.Controllers;
 
@@ -12,9 +13,12 @@ public sealed class TeamsController : Controller
 {
     private readonly IUserTeamService _userTeamService;
 
-    public TeamsController(IUserTeamService userTeamService)
+    private readonly IPrivateImageService _privateImageService;
+
+    public TeamsController(IUserTeamService userTeamService, IPrivateImageService privateImageService)
     {
         _userTeamService = userTeamService;
+        _privateImageService = privateImageService;
     }
 
     [HttpGet]
@@ -103,32 +107,136 @@ public sealed class TeamsController : Controller
             return Forbid();
         }
 
-        IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles =
-        [
-            .. details.AvailableMemberRoles.Select(role => new TeamRoleOptionViewModel(role.TeamRoleId, role.Label))
-        ];
-        IReadOnlyCollection<TeamMemberViewModel> members =
-        [
-            .. details.Members.Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.TeamRoleId, member.RoleLabel, member.IsOwner, member.CanChangeRole, member.CanRemove, member.JoinedAtUtc))
-        ];
-
-        PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null;
-
-        if (details.PendingOwnershipTransfer is not null)
-        {
-            PendingOwnershipTransferSummary transfer = details.PendingOwnershipTransfer;
-
-            pendingOwnershipTransfer = new PendingOwnershipTransferViewModel(
-                transfer.OwnershipTransferId,
-                transfer.RecipientMembershipId,
-                transfer.RecipientPseudo,
-                transfer.RecipientTag,
-                transfer.CreatedAtUtc);
-        }
-
-        TeamManagementViewModel viewModel = new(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members, pendingOwnershipTransfer);
+        TeamManagementViewModel viewModel = BuildManagementViewModel(details);
 
         return View(viewModel);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Logo(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
+        PrivateImageContent? image = await _privateImageService.GetTeamLogoThumbnailAsync(userId.Value, teamId, cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["Cache-Control"] = "private, no-store";
+
+        return File(image.Content, image.MediaType);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> EditInformation(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, teamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserIsOwner)
+        {
+            return Forbid();
+        }
+
+        return RedirectToAction(nameof(Management), new { teamId, section = "information" });
+    }
+
+    [HttpPost]
+    [RequestFormLimits(MultipartBodyLengthLimit = 3_145_728)]
+    public async Task<IActionResult> EditInformation([Bind(Prefix = nameof(TeamManagementViewModel.InformationForm))] UpdateTeamInformationViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (model.TeamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, model.TeamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserIsOwner)
+        {
+            return Forbid();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            ViewData["ActiveManagementSection"] = "information";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, informationForm: model);
+
+            return View(nameof(Management), managementViewModel);
+        }
+
+        Stream? logoContent = null;
+        UpdateTeamInformationResult result;
+
+        try
+        {
+            if (model.Logo is not null)
+            {
+                logoContent = model.Logo.OpenReadStream();
+            }
+
+            UpdateTeamInformationRequest request = new(userId.Value, model.TeamId, model.Name, model.Tag, model.Description, model.TimeZoneId, model.Logo?.FileName, logoContent);
+            result = await _userTeamService.UpdateInformationAsync(request, cancellationToken);
+        }
+        finally
+        {
+            if (logoContent is not null)
+            {
+                await logoContent.DisposeAsync();
+            }
+        }
+
+        if (result.AccessDenied)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            ViewData["ActiveManagementSection"] = "information";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, informationForm: model);
+
+            return View(nameof(Management), managementViewModel);
+        }
+
+        TempData["SuccessMessage"] = "Les informations de l’équipe ont été mises à jour.";
+
+        return RedirectToAction(nameof(Management), new { teamId = model.TeamId, section = "information" });
     }
 
     [HttpGet]
@@ -438,7 +546,7 @@ public sealed class TeamsController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> TransferOwnership(TransferOwnershipViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> TransferOwnership([Bind(Prefix = nameof(TeamManagementViewModel.OwnershipTransferForm))] TransferOwnershipViewModel model, CancellationToken cancellationToken)
     {
         Guid? userId = GetCurrentUserId();
 
@@ -463,12 +571,17 @@ public sealed class TeamsController : Controller
 
         if (model.RecipientMembershipId == Guid.Empty)
         {
-            ModelState.AddModelError(nameof(model.RecipientMembershipId), "Le nouveau propriétaire est obligatoire.");
+            string fieldName = $"{nameof(TeamManagementViewModel.OwnershipTransferForm)}.{nameof(TransferOwnershipViewModel.RecipientMembershipId)}";
+
+            ModelState.AddModelError(fieldName, "Le nouveau propriétaire est obligatoire.");
         }
 
         if (!ModelState.IsValid)
         {
-            return View(viewModel);
+            ViewData["ActiveManagementSection"] = "ownership";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, ownershipTransferForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
         }
 
         InitiateOwnershipTransferRequest request = new(userId.Value, viewModel.TeamId, viewModel.RecipientMembershipId!.Value);
@@ -486,12 +599,15 @@ public sealed class TeamsController : Controller
                 ModelState.AddModelError(string.Empty, error);
             }
 
-            return View(viewModel);
+            ViewData["ActiveManagementSection"] = "ownership";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, ownershipTransferForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
         }
 
         TempData["SuccessMessage"] = "Le transfert de propriété a été proposé avec succès.";
 
-        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId });
+        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId, section = "ownership" });
     }
 
     [HttpPost]
@@ -511,7 +627,7 @@ public sealed class TeamsController : Controller
 
         if (ownershipTransferId == Guid.Empty)
         {
-            return RedirectToAction(nameof(Management), new { teamId });
+            return RedirectToAction(nameof(Management), new { teamId, section = "ownership" });
         }
 
         ResolveOwnershipTransferRequest request = new(userId.Value, teamId, ownershipTransferId);
@@ -526,12 +642,12 @@ public sealed class TeamsController : Controller
         {
             TempData["ErrorMessage"] = result.Errors.FirstOrDefault() ?? "Le transfert de propriété n’a pas pu être annulé.";
 
-            return RedirectToAction(nameof(Management), new { teamId });
+            return RedirectToAction(nameof(Management), new { teamId, section = "ownership" });
         }
 
         TempData["SuccessMessage"] = "Le transfert de propriété a été annulé.";
 
-        return RedirectToAction(nameof(Management), new { teamId });
+        return RedirectToAction(nameof(Management), new { teamId, section = "ownership" });
     }
 
     [HttpGet]
@@ -562,7 +678,7 @@ public sealed class TeamsController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> Invite(InviteTeamMemberViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Invite([Bind(Prefix = nameof(TeamManagementViewModel.InvitationForm))] InviteTeamMemberViewModel model, CancellationToken cancellationToken)
     {
         Guid? userId = GetCurrentUserId();
 
@@ -587,7 +703,10 @@ public sealed class TeamsController : Controller
 
         if (!ModelState.IsValid)
         {
-            return View(viewModel);
+            ViewData["ActiveManagementSection"] = "invitations";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, invitationForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
         }
 
         InviteTeamMemberRequest request = new(userId.Value, viewModel.TeamId, viewModel.RecipientIdentity, viewModel.ProposedTeamRoleId);
@@ -605,12 +724,15 @@ public sealed class TeamsController : Controller
                 ModelState.AddModelError(string.Empty, error);
             }
 
-            return View(viewModel);
+            ViewData["ActiveManagementSection"] = "invitations";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, invitationForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
         }
 
         TempData["SuccessMessage"] = "L’invitation a été envoyée avec succès.";
 
-        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId });
+        return RedirectToAction(nameof(Management), new { teamId = viewModel.TeamId, section = "invitations" });
     }
 
     [HttpPost]
@@ -680,6 +802,33 @@ public sealed class TeamsController : Controller
         };
     }
 
+    private static TeamManagementViewModel BuildManagementViewModel(TeamManagementDetails details, InviteTeamMemberViewModel? invitationForm = null, TransferOwnershipViewModel? ownershipTransferForm = null, UpdateTeamInformationViewModel? informationForm = null)
+    {
+        IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles =
+        [
+            .. details.AvailableMemberRoles.Select(role => new TeamRoleOptionViewModel(role.TeamRoleId, role.Label))
+        ];
+        IReadOnlyCollection<TeamMemberViewModel> members =
+        [
+            .. details.Members.Select(member => new TeamMemberViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.TeamRoleId, member.RoleLabel, member.IsOwner, member.CanChangeRole, member.CanRemove, member.JoinedAtUtc))
+        ];
+
+        PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null;
+
+        if (details.PendingOwnershipTransfer is not null)
+        {
+            PendingOwnershipTransferSummary transfer = details.PendingOwnershipTransfer;
+
+            pendingOwnershipTransfer = new PendingOwnershipTransferViewModel(transfer.OwnershipTransferId, transfer.RecipientMembershipId, transfer.RecipientPseudo, transfer.RecipientTag, transfer.CreatedAtUtc);
+        }
+
+        UpdateTeamInformationViewModel preparedInformationForm = BuildUpdateInformationViewModel(details, informationForm);
+        InviteTeamMemberViewModel preparedInvitationForm = BuildInviteViewModel(details, invitationForm);
+        TransferOwnershipViewModel preparedOwnershipTransferForm = BuildTransferOwnershipViewModel(details, ownershipTransferForm);
+
+        return new TeamManagementViewModel(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members, pendingOwnershipTransfer, details.HasLogo, preparedInvitationForm, preparedOwnershipTransferForm, preparedInformationForm);
+    }
+
     private static TransferOwnershipViewModel BuildTransferOwnershipViewModel(TeamManagementDetails details, TransferOwnershipViewModel? model = null)
     {
         TransferOwnershipViewModel viewModel = model ?? new TransferOwnershipViewModel();
@@ -719,6 +868,50 @@ public sealed class TeamsController : Controller
         ];
 
         return new TeamsIndexViewModel(teamCards, createTeam);
+    }
+
+    private static UpdateTeamInformationViewModel BuildUpdateInformationViewModel(TeamManagementDetails details, UpdateTeamInformationViewModel? model = null)
+    {
+        UpdateTeamInformationViewModel viewModel = model ?? new UpdateTeamInformationViewModel
+        {
+            Name = details.Name,
+            Tag = details.Tag,
+            Description = details.Description,
+            TimeZoneId = details.TimeZoneId
+        };
+
+        viewModel.TeamId = details.TeamId;
+        viewModel.TeamName = details.Name;
+        viewModel.HasCurrentLogo = details.HasLogo;
+        viewModel.AvailableTimeZoneIds = GetAvailableIanaTimeZoneIds(details.TimeZoneId);
+
+        return viewModel;
+    }
+
+    private static IReadOnlyCollection<string> GetAvailableIanaTimeZoneIds(string currentTimeZoneId)
+    {
+        HashSet<string> timeZoneIds = new(StringComparer.Ordinal)
+    {
+        "Europe/Paris",
+        currentTimeZoneId
+    };
+
+        foreach (TimeZoneInfo timeZone in TimeZoneInfo.GetSystemTimeZones())
+        {
+            if (timeZone.HasIanaId)
+            {
+                timeZoneIds.Add(timeZone.Id);
+
+                continue;
+            }
+
+            if (TimeZoneInfo.TryConvertWindowsIdToIanaId(timeZone.Id, out string? ianaTimeZoneId))
+            {
+                timeZoneIds.Add(ianaTimeZoneId);
+            }
+        }
+
+        return [.. timeZoneIds.OrderBy(timeZoneId => timeZoneId)];
     }
 
     private Guid? GetCurrentUserId()

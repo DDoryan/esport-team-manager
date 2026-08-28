@@ -3,8 +3,19 @@
 @model TeamManagementViewModel
 
 @{
-    ViewData["Title"] = Model.Name;
+    ViewData["HtmlClass"] = "team-management-fixed-page";
     string memberCountLabel = Model.Members.Count == 1 ? "1 membre actif" : $"{Model.Members.Count} membres actifs";
+    string teamLogoFallbackSource = string.IsNullOrWhiteSpace(Model.Tag) ? Model.Name : Model.Tag;
+    string teamLogoFallback = teamLogoFallbackSource.Trim()[..Math.Min(2, teamLogoFallbackSource.Trim().Length)].ToUpperInvariant();
+    string requestedSection = (ViewData["ActiveManagementSection"] as string ?? Context.Request.Query["section"].ToString()).Trim().ToLowerInvariant();
+    string activeSection = requestedSection switch
+    {
+        "information" => "information",
+        "invitations" when Model.CurrentUserCanInviteMembers => "invitations",
+        "ownership" when Model.CurrentUserIsOwner => "ownership",
+        "departure" when Model.CurrentUserCanLeaveTeam => "departure",
+        _ => "members"
+    };
 }
 
 <section class="team-management-page" aria-labelledby="team-management-title">
@@ -12,187 +23,472 @@
         <h1 id="team-management-title" class="mb-0">@Model.Name</h1>
     </header>
 
-    <section class="card team-members-panel" aria-labelledby="team-members-title">
-        <div class="card-body">
-            <header class="team-members-header mb-3">
-                <div>
-                    <h2 id="team-members-title" class="h3 mb-1">Membres</h2>
-                    <p class="text-body-secondary mb-0">@memberCountLabel</p>
+    <div class="team-management-tabs-shell app-scroll-region mb-4">
+        <nav class="team-management-tabs" aria-label="Sections de la gestion d’équipe">
+            <a class="team-management-tab @(activeSection == "information" ? "team-management-tab-active" : string.Empty)"
+               asp-controller="Teams"
+               asp-action="Management"
+               asp-route-teamId="@Model.TeamId"
+               asp-route-section="information"
+               aria-current="@(activeSection == "information" ? "page" : null)">
+                Informations
+            </a>
+
+            <a class="team-management-tab @(activeSection == "members" ? "team-management-tab-active" : string.Empty)"
+               asp-controller="Teams"
+               asp-action="Management"
+               asp-route-teamId="@Model.TeamId"
+               asp-route-section="members"
+               aria-current="@(activeSection == "members" ? "page" : null)">
+                Membres
+            </a>
+
+            @if (Model.CurrentUserCanInviteMembers)
+            {
+                <a class="team-management-tab @(activeSection == "invitations" ? "team-management-tab-active" : string.Empty)"
+                   asp-controller="Teams"
+                   asp-action="Management"
+                   asp-route-teamId="@Model.TeamId"
+                   asp-route-section="invitations"
+                   aria-current="@(activeSection == "invitations" ? "page" : null)">
+                    Invitations
+                </a>
+            }
+
+            @if (Model.CurrentUserIsOwner)
+            {
+                <a class="team-management-tab @(activeSection == "ownership" ? "team-management-tab-active" : string.Empty)"
+                   asp-controller="Teams"
+                   asp-action="Management"
+                   asp-route-teamId="@Model.TeamId"
+                   asp-route-section="ownership"
+                   aria-current="@(activeSection == "ownership" ? "page" : null)">
+                    Propriété
+                </a>
+            }
+
+            @if (Model.CurrentUserCanLeaveTeam)
+            {
+                <a class="team-management-tab @(activeSection == "departure" ? "team-management-tab-active" : string.Empty)"
+                   asp-controller="Teams"
+                   asp-action="Management"
+                   asp-route-teamId="@Model.TeamId"
+                   asp-route-section="departure"
+                   aria-current="@(activeSection == "departure" ? "page" : null)">
+                    Départ et suppression
+                </a>
+            }
+        </nav>
+    </div>
+
+    @if (activeSection == "information")
+    {
+        <section class="card team-information-panel team-management-section" aria-labelledby="team-information-title">
+            <div class="card-body">
+                <form asp-controller="Teams"
+                      asp-action="EditInformation"
+                      method="post"
+                      enctype="multipart/form-data"
+                      class="team-information-form">
+                    <input asp-for="InformationForm.TeamId" type="hidden" />
+
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                    <header class="team-information-header">
+                        <h2 id="team-information-title" class="h3 mb-0">Informations générales</h2>
+                    </header>
+
+                    <section class="team-information-logo-section" aria-labelledby="team-information-logo-title">
+                        <div class="team-logo-frame" aria-hidden="@Model.HasLogo.ToString().ToLowerInvariant()">
+                            @if (Model.HasLogo)
+                            {
+                                <img src="@Url.Action("Logo", "Teams", new { teamId = Model.TeamId })"
+                                     alt="Logo de l’équipe @Model.Name"
+                                     class="team-logo-image" />
+                            }
+                            else
+                            {
+                                <span class="team-logo-fallback">@teamLogoFallback</span>
+                            }
+                        </div>
+
+                        <div class="team-information-logo-details">
+                            <span id="team-information-logo-title" class="team-information-field-label">
+                                Logo de l’équipe
+                            </span>
+
+                            @if (Model.CurrentUserIsOwner)
+                            {
+                                <input asp-for="InformationForm.Logo"
+                                       class="form-control team-information-logo-input"
+                                       type="file"
+                                       accept="image/png,image/jpeg,image/webp" />
+
+                                <span asp-validation-for="InformationForm.Logo" class="text-danger"></span>
+
+                                <p class="form-text team-information-logo-help mb-0">
+                                    PNG, JPEG ou WebP, 2 Mo maximum.
+                                    @if (Model.HasLogo)
+                                    {
+                                        <span>Laissez le champ vide pour conserver le logo actuel.</span>
+                                    }
+                                </p>
+                            }
+                            else
+                            {
+                                <p class="text-body-secondary mb-0">
+                                    Logo actuellement utilisé par l’équipe.
+                                </p>
+                            }
+                        </div>
+                    </section>
+
+                    <div class="team-information-form-grid">
+                        <div class="team-information-field">
+                            @if (Model.CurrentUserIsOwner)
+                            {
+                                <label asp-for="InformationForm.Name" class="team-information-field-label">Nom</label>
+
+                                <input asp-for="InformationForm.Name"
+                                       class="form-control team-information-control"
+                                       maxlength="50"
+                                       autocomplete="off" />
+
+                                <span asp-validation-for="InformationForm.Name" class="text-danger"></span>
+                            }
+                            else
+                            {
+                                <span class="team-information-field-label">Nom</span>
+                                <div class="team-information-readonly-value">@Model.Name</div>
+                            }
+                        </div>
+
+                        <div class="team-information-field">
+                            @if (Model.CurrentUserIsOwner)
+                            {
+                                <label asp-for="InformationForm.Tag" class="team-information-field-label">Tag</label>
+
+                                <input asp-for="InformationForm.Tag"
+                                       class="form-control team-information-control"
+                                       maxlength="6"
+                                       autocomplete="off"
+                                       placeholder="Facultatif" />
+
+                                <span asp-validation-for="InformationForm.Tag" class="text-danger"></span>
+                            }
+                            else
+                            {
+                                <span class="team-information-field-label">Tag</span>
+                                <div class="team-information-readonly-value">
+                                    @(string.IsNullOrWhiteSpace(Model.Tag) ? "Non renseigné" : Model.Tag)
+                                </div>
+                            }
+                        </div>
+
+                        <div class="team-information-field team-information-time-zone">
+                            @if (Model.CurrentUserIsOwner)
+                            {
+                                <label asp-for="InformationForm.TimeZoneId" class="team-information-field-label">Fuseau horaire</label>
+
+                                <select asp-for="InformationForm.TimeZoneId" class="form-select team-information-control">
+                                    @foreach (string timeZoneId in Model.InformationForm.AvailableTimeZoneIds)
+                                    {
+                                        <option value="@timeZoneId">@timeZoneId</option>
+                                    }
+                                </select>
+
+                                <span asp-validation-for="InformationForm.TimeZoneId" class="text-danger"></span>
+                            }
+                            else
+                            {
+                                <span class="team-information-field-label">Fuseau horaire</span>
+                                <div class="team-information-readonly-value">@Model.TimeZoneId</div>
+                            }
+                        </div>
+
+                        <div class="team-information-field team-information-form-description">
+                            @if (Model.CurrentUserIsOwner)
+                            {
+                                <label asp-for="InformationForm.Description" class="team-information-field-label">Description</label>
+
+                                <textarea asp-for="InformationForm.Description"
+                                          class="form-control team-information-control team-information-description-control"
+                                          rows="2"
+                                          maxlength="500"
+                                          placeholder="Présentez brièvement votre équipe."></textarea>
+
+                                <span asp-validation-for="InformationForm.Description" class="text-danger"></span>
+                            }
+                            else
+                            {
+                                <span class="team-information-field-label">Description</span>
+                                <div class="team-information-readonly-value team-information-readonly-description">
+                                    @(string.IsNullOrWhiteSpace(Model.Description) ? "Aucune description renseignée." : Model.Description)
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (Model.CurrentUserIsOwner)
+                    {
+                        <div class="team-information-actions">
+                            <button type="submit" class="btn btn-primary">
+                                Modifier
+                            </button>
+                        </div>
+                    }
+                </form>
+            </div>
+        </section>
+    }
+
+
+    @if (activeSection == "members")
+    {
+        <section class="card team-members-panel team-management-section" aria-labelledby="team-members-title">
+            <div class="card-body">
+                <header class="team-members-header mb-3">
+                    <div>
+                        <h2 id="team-members-title" class="h3 mb-1">Membres</h2>
+                        <p class="text-body-secondary mb-0">@memberCountLabel</p>
+                    </div>
+
+                    @if (Model.CurrentUserCanInviteMembers)
+                    {
+                        <a class="btn btn-primary team-members-invite-button"
+                           asp-controller="Teams"
+                           asp-action="Management"
+                           asp-route-teamId="@Model.TeamId"
+                           asp-route-section="invitations">
+                            <span aria-hidden="true">+</span>
+                            Inviter un membre
+                        </a>
+                    }
+                </header>
+
+                <div class="team-members-desktop">
+                    <div class="table-responsive app-scroll-region">
+                        <table class="table team-members-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Identité</th>
+                                    <th scope="col">Rôle</th>
+                                    <th scope="col">Entrée</th>
+                                    <th scope="col">Statut</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                @foreach (TeamMemberViewModel member in Model.Members)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="team-member-identity">
+                                                <strong>@member.Pseudo</strong>
+                                                <span class="text-body-secondary">#@member.Tag</span>
+                                            </span>
+                                        </td>
+                                        <td>@member.RoleLabel</td>
+                                        <td>
+                                            <time datetime="@member.JoinedAtUtc.ToString("O")">
+                                                @member.JoinedAtUtc.ToString("dd/MM/yyyy")
+                                            </time>
+                                        </td>
+                                        <td>
+                                            @if (member.IsOwner)
+                                            {
+                                                <span class="badge team-owner-badge">Propriétaire</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge team-member-badge">Membre</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (member.CanChangeRole || member.CanRemove)
+                                            {
+                                                <div class="team-member-actions">
+                                                    @if (member.CanChangeRole)
+                                                    {
+                                                        <a class="btn btn-sm btn-outline-primary"
+                                                           asp-controller="Teams"
+                                                           asp-action="ChangeRole"
+                                                           asp-route-teamId="@Model.TeamId"
+                                                           asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                            Modifier
+                                                        </a>
+                                                    }
+
+                                                    @if (member.CanRemove)
+                                                    {
+                                                        <a class="btn btn-sm btn-outline-danger"
+                                                           asp-controller="Teams"
+                                                           asp-action="RemoveMember"
+                                                           asp-route-teamId="@Model.TeamId"
+                                                           asp-route-teamMembershipId="@member.TeamMembershipId">
+                                                            Exclure
+                                                        </a>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-body-secondary">—</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                @if (Model.CurrentUserCanInviteMembers)
-                {
-                    <a class="btn btn-primary team-members-invite-button"
-                       asp-controller="Teams"
-                       asp-action="Invite"
-                       asp-route-teamId="@Model.TeamId">
-                        <span aria-hidden="true">+</span>
-                        Inviter un membre
-                    </a>
-                }
-            </header>
+                <div class="team-members-mobile">
+                    @foreach (TeamMemberViewModel member in Model.Members)
+                    {
+                        <article class="team-member-card">
+                            <div class="team-member-card-header">
+                                <span class="team-member-identity">
+                                    <strong>@member.Pseudo</strong>
+                                    <span class="text-body-secondary">#@member.Tag</span>
+                                </span>
 
-            <div class="team-members-desktop">
-                <div class="table-responsive app-scroll-region">
-                    <table class="table team-members-table align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th scope="col">Identité</th>
-                                <th scope="col">Rôle</th>
-                                <th scope="col">Entrée</th>
-                                <th scope="col">Statut</th>
-                                <th scope="col">Actions</th>
-                            </tr>
-                        </thead>
+                                @if (member.CanChangeRole || member.CanRemove)
+                                {
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary team-member-actions-toggle"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                aria-label="Actions pour @member.Pseudo#@member.Tag">
+                                            <span aria-hidden="true">⋮</span>
+                                        </button>
 
-                        <tbody>
-                            @foreach (TeamMemberViewModel member in Model.Members)
-                            {
-                                <tr>
-                                    <td>
-                                        <span class="team-member-identity">
-                                            <strong>@member.Pseudo</strong>
-                                            <span class="text-body-secondary">#@member.Tag</span>
-                                        </span>
-                                    </td>
-                                    <td>@member.RoleLabel</td>
-                                    <td>
-                                        <time datetime="@member.JoinedAtUtc.ToString("O")">
-                                            @member.JoinedAtUtc.ToString("dd/MM/yyyy")
-                                        </time>
-                                    </td>
-                                    <td>
-                                        @if (member.IsOwner)
-                                        {
-                                            <span class="badge team-owner-badge">Propriétaire</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge team-member-badge">Membre</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        @if (member.CanChangeRole || member.CanRemove)
-                                        {
-                                            <div class="team-member-actions">
-                                                @if (member.CanChangeRole)
-                                                {
-                                                    <a class="btn btn-sm btn-outline-primary"
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            @if (member.CanChangeRole)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item"
                                                        asp-controller="Teams"
                                                        asp-action="ChangeRole"
                                                        asp-route-teamId="@Model.TeamId"
                                                        asp-route-teamMembershipId="@member.TeamMembershipId">
-                                                        Modifier
+                                                        Modifier le rôle
                                                     </a>
-                                                }
+                                                </li>
+                                            }
 
-                                                @if (member.CanRemove)
-                                                {
-                                                    <a class="btn btn-sm btn-outline-danger"
+                                            @if (member.CanRemove)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-danger"
                                                        asp-controller="Teams"
                                                        asp-action="RemoveMember"
                                                        asp-route-teamId="@Model.TeamId"
                                                        asp-route-teamMembershipId="@member.TeamMembershipId">
                                                         Exclure
                                                     </a>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-body-secondary">—</span>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="team-member-role-row">
+                                <p class="team-member-role mb-0">@member.RoleLabel</p>
+
+                                @if (member.IsOwner)
+                                {
+                                    <span class="badge team-owner-badge">Propriétaire</span>
+                                }
+                                else
+                                {
+                                    <span class="badge team-member-badge">Membre</span>
+                                }
+                            </div>
+
+                            <p class="text-body-secondary mb-0">
+                                Entrée :
+                                <time datetime="@member.JoinedAtUtc.ToString("O")">
+                                    @member.JoinedAtUtc.ToString("dd/MM/yyyy")
+                                </time>
+                            </p>
+                        </article>
+                    }
                 </div>
             </div>
+        </section>
+    }
 
-            <div class="team-members-mobile">
-                @foreach (TeamMemberViewModel member in Model.Members)
-                {
-                    <article class="team-member-card">
-                        <div class="team-member-card-header">
-                            <span class="team-member-identity">
-                                <strong>@member.Pseudo</strong>
-                                <span class="text-body-secondary">#@member.Tag</span>
-                            </span>
-
-                            @if (member.CanChangeRole || member.CanRemove)
-                            {
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-secondary team-member-actions-toggle"
-                                            type="button"
-                                            data-bs-toggle="dropdown"
-                                            aria-expanded="false"
-                                            aria-label="Actions pour @member.Pseudo#@member.Tag">
-                                        <span aria-hidden="true">⋮</span>
-                                    </button>
-
-                                    <ul class="dropdown-menu dropdown-menu-end">
-                                        @if (member.CanChangeRole)
-                                        {
-                                            <li>
-                                                <a class="dropdown-item"
-                                                   asp-controller="Teams"
-                                                   asp-action="ChangeRole"
-                                                   asp-route-teamId="@Model.TeamId"
-                                                   asp-route-teamMembershipId="@member.TeamMembershipId">
-                                                    Modifier le rôle
-                                                </a>
-                                            </li>
-                                        }
-
-                                        @if (member.CanRemove)
-                                        {
-                                            <li>
-                                                <a class="dropdown-item text-danger"
-                                                   asp-controller="Teams"
-                                                   asp-action="RemoveMember"
-                                                   asp-route-teamId="@Model.TeamId"
-                                                   asp-route-teamMembershipId="@member.TeamMembershipId">
-                                                    Exclure
-                                                </a>
-                                            </li>
-                                        }
-                                    </ul>
-                                </div>
-                            }
-                        </div>
-
-                        <div class="team-member-role-row">
-                            <p class="team-member-role mb-0">@member.RoleLabel</p>
-
-                            @if (member.IsOwner)
-                            {
-                                <span class="badge team-owner-badge">Propriétaire</span>
-                            }
-                            else
-                            {
-                                <span class="badge team-member-badge">Membre</span>
-                            }
-                        </div>
-
-                        <p class="text-body-secondary mb-0">
-                            Entrée :
-                            <time datetime="@member.JoinedAtUtc.ToString("O")">
-                                @member.JoinedAtUtc.ToString("dd/MM/yyyy")
-                            </time>
-                        </p>
-                    </article>
-                }
-            </div>
-        </div>
-    </section>
-
-    @if (Model.CurrentUserIsOwner)
+    @if (activeSection == "invitations" && Model.CurrentUserCanInviteMembers)
     {
-        <section class="card mt-4" aria-labelledby="ownership-transfer-title">
-            <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
-                @if (Model.PendingOwnershipTransfer is not null)
-                {
+        <section class="card team-management-section" aria-labelledby="team-invitations-title">
+            <div class="card-body">
+                <div class="team-management-form">
+                    <header class="team-management-form-header">
+                        <h2 id="team-invitations-title" class="h3 mb-2">Nouvelle invitation</h2>
+                        <p class="text-body-secondary mb-0">
+                            Saisissez l’identité exacte du compte et choisissez son rôle dans l’équipe.
+                        </p>
+                    </header>
+
+                    <form asp-controller="Teams"
+                          asp-action="Invite"
+                          asp-route-section="invitations"
+                          method="post">
+                        <input asp-for="InvitationForm.TeamId" type="hidden" />
+
+                        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                        <div class="mb-4">
+                            <label asp-for="InvitationForm.RecipientIdentity" class="form-label"></label>
+                            <input asp-for="InvitationForm.RecipientIdentity"
+                                   class="form-control"
+                                   autocomplete="off"
+                                   autocapitalize="none"
+                                   spellcheck="false"
+                                   placeholder="Pseudo#Tag"
+                                   aria-describedby="recipient-identity-help" />
+
+                            <div id="recipient-identity-help" class="form-text">
+                                Utilisez le pseudo et le tag exacts du compte, par exemple Joueur#A01.
+                            </div>
+
+                            <span asp-validation-for="InvitationForm.RecipientIdentity" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-4">
+                            <label asp-for="InvitationForm.ProposedTeamRoleId" class="form-label"></label>
+
+                            <select asp-for="InvitationForm.ProposedTeamRoleId" class="form-select">
+                                <option value="0">Sélectionner un rôle</option>
+
+                                @foreach (TeamRoleOptionViewModel role in Model.InvitationForm.AvailableRoles)
+                                {
+                                    <option value="@role.TeamRoleId">@role.Label</option>
+                                }
+                            </select>
+
+                            <span asp-validation-for="InvitationForm.ProposedTeamRoleId" class="text-danger"></span>
+                        </div>
+
+                        <div class="team-invite-actions">
+                            <button type="submit" class="btn btn-primary">Envoyer l’invitation</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (activeSection == "ownership" && Model.CurrentUserIsOwner)
+    {
+        <section class="card team-management-section" aria-labelledby="ownership-transfer-title">
+            @if (Model.PendingOwnershipTransfer is not null)
+            {
+                <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                     <div>
                         <h2 id="ownership-transfer-title" class="h3 mb-1">Transfert de propriété en attente</h2>
                         <p class="text-body-secondary mb-0">
@@ -210,43 +506,70 @@
                             Annuler le transfert
                         </button>
                     </form>
-                }
-                else
-                {
-                    <div>
-                        <h2 id="ownership-transfer-title" class="h3 mb-1">Transfert de propriété</h2>
-
-                        @if (Model.Members.Any(member => !member.IsOwner))
-                        {
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    <div class="team-management-form">
+                        <header class="team-management-form-header">
+                            <h2 id="ownership-transfer-title" class="h3 mb-2">Transférer la propriété</h2>
                             <p class="text-body-secondary mb-0">
-                                Proposez la propriété de l’équipe à un membre actif.
+                                Proposez la propriété de l’équipe à l’un de ses membres actifs.
                             </p>
+                        </header>
+
+                        @if (Model.OwnershipTransferForm.AvailableRecipients.Count == 0)
+                        {
+                            <div class="alert alert-secondary mb-0" role="status">
+                                Ajoutez au moins un autre membre avant de pouvoir transférer la propriété.
+                            </div>
                         }
                         else
                         {
-                            <p class="text-body-secondary mb-0">
-                                Ajoutez au moins un autre membre avant de pouvoir transférer la propriété.
-                            </p>
+                            <div class="alert alert-warning" role="note">
+                                La propriété ne changera qu’après l’acceptation du membre choisi. Votre rôle fonctionnel actuel restera inchangé.
+                            </div>
+
+                            <form asp-controller="Teams"
+                                  asp-action="TransferOwnership"
+                                  asp-route-section="ownership"
+                                  method="post">
+                                <input asp-for="OwnershipTransferForm.TeamId" type="hidden" />
+
+                                <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+                                <div class="mb-4">
+                                    <label asp-for="OwnershipTransferForm.RecipientMembershipId" class="form-label"></label>
+
+                                    <select asp-for="OwnershipTransferForm.RecipientMembershipId" class="form-select">
+                                        <option value="">Sélectionner un membre</option>
+
+                                        @foreach (OwnershipTransferRecipientOptionViewModel recipient in Model.OwnershipTransferForm.AvailableRecipients)
+                                        {
+                                            <option value="@recipient.TeamMembershipId">
+                                                @recipient.Pseudo#@recipient.Tag — @recipient.RoleLabel
+                                            </option>
+                                        }
+                                    </select>
+
+                                    <span asp-validation-for="OwnershipTransferForm.RecipientMembershipId" class="text-danger"></span>
+                                </div>
+
+                                <div class="team-invite-actions">
+                                    <button type="submit" class="btn btn-primary">Proposer le transfert</button>
+                                </div>
+                            </form>
                         }
                     </div>
-
-                    @if (Model.Members.Any(member => !member.IsOwner))
-                    {
-                        <a class="btn btn-outline-primary"
-                           asp-controller="Teams"
-                           asp-action="TransferOwnership"
-                           asp-route-teamId="@Model.TeamId">
-                            Transférer la propriété
-                        </a>
-                    }
-                }
-            </div>
+                </div>
+            }
         </section>
     }
 
-    @if (Model.CurrentUserCanLeaveTeam)
+    @if (activeSection == "departure" && Model.CurrentUserCanLeaveTeam)
     {
-        <section class="card team-departure-panel mt-4" aria-labelledby="team-departure-title">
+        <section class="card team-departure-panel team-management-section" aria-labelledby="team-departure-title">
             <div class="card-body team-departure-content">
                 <div>
                     <h2 id="team-departure-title" class="h3 mb-1">Départ de l’équipe</h2>
@@ -265,3 +588,8 @@
         </section>
     }
 </section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

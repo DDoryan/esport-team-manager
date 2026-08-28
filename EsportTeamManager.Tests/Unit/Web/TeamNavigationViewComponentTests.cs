@@ -198,5 +198,12 @@ public sealed class TeamNavigationViewComponentTests
 
             return Task.FromResult(OwnershipTransferActionResult.Denied());
         }
+
+        public Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(UpdateTeamInformationResult.Denied());
+        }
     }
 }
