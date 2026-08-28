@@ -121,13 +121,19 @@ jobs:
 
           cd "$backup_directory"
 
+          printf 'Création des empreintes internes.\n'
+
           sha256sum production.dump > production.dump.sha256
           find private-images -type f -print0 | sort --zero-terminated | xargs --null --no-run-if-empty sha256sum > private-images.sha256
+
+          printf "Création de l'archive PostgreSQL.\n"
 
           tar --create --gzip \
             --file production-database.tar.gz \
             production.dump \
             production.dump.sha256
+
+          printf "Création de l'archive des images privées.\n"
 
           tar --create --gzip \
             --file production-private-images.tar.gz \
@@ -137,6 +143,8 @@ jobs:
           for archive_name in production-database.tar.gz production-private-images.tar.gz; do
             encrypted_name="$archive_name.enc"
             verification_name="$archive_name.verification"
+
+            printf 'Chiffrement de %s.\n' "$archive_name"
 
             openssl enc \
               -aes-256-cbc \
@@ -149,6 +157,8 @@ jobs:
 
             sha256sum "$encrypted_name" > "$encrypted_name.sha256"
 
+            printf 'Déchiffrement de contrôle de %s.\n' "$archive_name"
+
             openssl enc \
               -decrypt \
               -aes-256-cbc \
@@ -158,12 +168,25 @@ jobs:
               -out "$verification_name" \
               -pass env:BACKUP_ENCRYPTION_PASSWORD
 
-            cmp --silent "$archive_name" "$verification_name"
+            if ! cmp --silent "$archive_name" "$verification_name"; then
+              original_fingerprint="$(sha256sum "$archive_name" | awk '{print $1}')"
+              verification_fingerprint="$(sha256sum "$verification_name" | awk '{print $1}')"
+
+              printf "::error::Le déchiffrement de contrôle de %s est différent de l'archive originale. Empreinte originale : %s. Empreinte de contrôle : %s.\n" "$archive_name" "$original_fingerprint" "$verification_fingerprint"
+              exit 1
+            fi
+
+            printf 'Contrôle réussi pour %s.\n' "$archive_name"
+
             rm -f "$archive_name" "$verification_name"
           done
 
+          printf 'Suppression des données temporaires en clair.\n'
+
           rm -f production.dump production.dump.sha256 private-images.sha256
           rm -rf "$backup_directory/private-images"
+
+          printf 'Chiffrement et contrôles terminés.\n'
 
       - name: Conserver la sauvegarde PostgreSQL pendant 30 jours
         uses: actions/upload-artifact@v6
