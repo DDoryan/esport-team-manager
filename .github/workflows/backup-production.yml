@@ -24,6 +24,15 @@ jobs:
       RAILWAY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY_BASE64 }}
 
     steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v6
+
+      - name: Installer Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
       - name: Vérifier les secrets requis
         shell: bash
         run: |
@@ -92,7 +101,10 @@ jobs:
           ssh-keygen -y -f "$railway_ssh_key" > "$railway_ssh_key.pub"
           chmod 644 "$railway_ssh_key.pub"
 
-          trap 'rm -f "$railway_ssh_key" "$railway_ssh_key.pub"' EXIT
+          cleanup_railway_key() {
+            rm -f "$railway_ssh_key" "$railway_ssh_key.pub"
+          }
+          trap cleanup_railway_key EXIT
 
           mkdir -p "$local_image_root/team-logos" "$local_image_root/strategy-images"
 
@@ -121,75 +133,48 @@ jobs:
 
           cd "$backup_directory"
 
-          printf 'Création des empreintes internes.\n'
-
           sha256sum production.dump > production.dump.sha256
           find private-images -type f -print0 | sort --zero-terminated | xargs --null --no-run-if-empty sha256sum > private-images.sha256
 
           printf "Création de l'archive PostgreSQL.\n"
-
           tar --create --gzip \
             --file production-database.tar.gz \
             production.dump \
             production.dump.sha256
 
           printf "Création de l'archive des images privées.\n"
-
           tar --create --gzip \
             --file production-private-images.tar.gz \
             private-images \
             private-images.sha256
 
-                    for archive_name in production-database.tar.gz production-private-images.tar.gz; do
+          for archive_name in production-database.tar.gz production-private-images.tar.gz; do
             encrypted_name="$archive_name.enc"
             verification_name="$archive_name.verification"
 
-            printf 'Chiffrement de %s.\n' "$archive_name"
-
-            openssl enc \
-              -aes-256-ctr \
-              -salt \
-              -pbkdf2 \
-              -iter 200000 \
-              -md sha256 \
-              -in "$archive_name" \
-              -out "$encrypted_name" \
-              -pass env:BACKUP_ENCRYPTION_PASSWORD
+            printf 'Chiffrement authentifié de %s.\n' "$archive_name"
+            node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
+              encrypt "$archive_name" "$encrypted_name"
 
             sha256sum "$encrypted_name" > "$encrypted_name.sha256"
 
             printf 'Déchiffrement de contrôle de %s.\n' "$archive_name"
-
-            openssl enc \
-              -decrypt \
-              -aes-256-ctr \
-              -salt \
-              -pbkdf2 \
-              -iter 200000 \
-              -md sha256 \
-              -in "$encrypted_name" \
-              -out "$verification_name" \
-              -pass env:BACKUP_ENCRYPTION_PASSWORD
+            node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
+              decrypt "$encrypted_name" "$verification_name"
 
             if ! cmp --silent "$archive_name" "$verification_name"; then
-              original_fingerprint="$(sha256sum "$archive_name" | awk '{print $1}')"
-              verification_fingerprint="$(sha256sum "$verification_name" | awk '{print $1}')"
-
-              printf "::error::Le déchiffrement de contrôle de %s est différent de l'archive originale. Empreinte originale : %s. Empreinte de contrôle : %s.\n" "$archive_name" "$original_fingerprint" "$verification_fingerprint"
+              original_digest="$(sha256sum "$archive_name" | cut -d ' ' -f 1)"
+              verification_digest="$(sha256sum "$verification_name" | cut -d ' ' -f 1)"
+              printf "Le déchiffrement de contrôle de %s diffère de l'archive originale. Empreinte originale : %s. Empreinte de contrôle : %s.\n" \
+                "$archive_name" "$original_digest" "$verification_digest" >&2
               exit 1
             fi
-
-            printf 'Contrôle réussi pour %s.\n' "$archive_name"
 
             rm -f "$archive_name" "$verification_name"
           done
 
-          printf 'Suppression des données temporaires en clair.\n'
-
           rm -f production.dump production.dump.sha256 private-images.sha256
           rm -rf "$backup_directory/private-images"
-
-          printf 'Chiffrement et contrôles terminés.\n'
 
       - name: Conserver la sauvegarde PostgreSQL pendant 30 jours
         uses: actions/upload-artifact@v6
@@ -218,8 +203,8 @@ jobs:
         run: |
           {
             printf '### Sauvegarde de production réussie\n\n'
-            printf -- "- Identifiant : \`%s\`\n" "${{ steps.metadata.outputs.backup_id }}"
-            printf -- '- PostgreSQL : dump vérifié, chiffré et conservé 30 jours.\n'
-            printf -- '- Images privées : fichiers persistants vérifiés, chiffrés et conservés 30 jours.\n'
-            printf -- "- Stockages applicatifs inclus : \`team-logos\` et \`strategy-images\`.\n"
+            printf -- '- Identifiant : %s\n' "${{ steps.metadata.outputs.backup_id }}"
+            printf -- '- PostgreSQL : dump vérifié, chiffré avec AES-256-GCM et conservé 30 jours.\n'
+            printf -- '- Images privées : fichiers persistants vérifiés, chiffrés avec AES-256-GCM et conservés 30 jours.\n'
+            printf -- '- Stockages applicatifs inclus : team-logos et strategy-images.\n'
           } >> "$GITHUB_STEP_SUMMARY"
