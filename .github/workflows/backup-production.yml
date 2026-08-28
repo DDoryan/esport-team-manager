@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   backup:
-    name: Sauvegarder PostgreSQL et les images privées
+    name: Sauvegarder PostgreSQL et les images privÃ©es
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -24,7 +24,7 @@ jobs:
       RAILWAY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY_BASE64 }}
 
     steps:
-      - name: Récupérer le dépôt
+      - name: RÃ©cupÃ©rer le dÃ©pÃ´t
         uses: actions/checkout@v6
 
       - name: Installer Node.js 24
@@ -33,7 +33,7 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - name: Vérifier les secrets requis
+      - name: VÃ©rifier les secrets requis
         shell: bash
         run: |
           missing_secret=false
@@ -49,7 +49,7 @@ jobs:
             exit 1
           fi
 
-      - name: Préparer les métadonnées
+      - name: PrÃ©parer les mÃ©tadonnÃ©es
         id: metadata
         shell: bash
         run: |
@@ -77,7 +77,7 @@ jobs:
               postgres:18 \
               sh -c "pg_dump \"\$DATABASE_PUBLIC_URL\" --format=custom --no-owner --no-privileges --file=/backup/production.dump"
 
-      - name: Vérifier le dump PostgreSQL
+      - name: VÃ©rifier le dump PostgreSQL
         shell: bash
         run: |
           backup_directory="${{ steps.metadata.outputs.backup_directory }}"
@@ -87,7 +87,8 @@ jobs:
             postgres:18 \
             pg_restore --list /backup/production.dump > /dev/null
 
-      - name: Sauvegarder les images privées
+      - name: Sauvegarder les images privÃ©es
+        id: private_images
         shell: bash
         run: |
           backup_directory="${{ steps.metadata.outputs.backup_directory }}"
@@ -106,27 +107,72 @@ jobs:
           }
           trap cleanup_railway_key EXIT
 
-          mkdir -p "$local_image_root/team-logos" "$local_image_root/strategy-images"
+          mkdir -p "$local_image_root"
 
           remote_listing="$(npx --yes @railway/cli@latest service files \
             --service esport-team-manager \
             --environment production \
             list "$private_image_root")"
 
+          remote_file_count=0
+
+          download_remote_directory() {
+            local remote_directory="$1"
+            local local_directory="$2"
+            local directory_listing
+            local remote_entry
+            local directory_name
+
+            mkdir -p "$local_directory"
+
+            directory_listing="$(npx --yes @railway/cli@latest service files \
+              --service esport-team-manager \
+              --environment production \
+              list "$remote_directory")"
+
+            while IFS= read -r remote_entry; do
+              if [ -z "$remote_entry" ]; then
+                continue
+              fi
+
+              if [[ "$remote_entry" == */ ]]; then
+                directory_name="${remote_entry%/}"
+                download_remote_directory \
+                  "$remote_directory/$directory_name" \
+                  "$local_directory/$directory_name"
+              else
+                npx --yes @railway/cli@latest service files \
+                  --service esport-team-manager \
+                  --environment production \
+                  download --overwrite \
+                  "$remote_directory/$remote_entry" \
+                  "$local_directory/$remote_entry"
+
+                remote_file_count=$((remote_file_count + 1))
+              fi
+            done <<< "$directory_listing"
+          }
+
           for storage_category in team-logos strategy-images; do
             if printf '%s\n' "$remote_listing" | grep --fixed-strings --line-regexp --quiet "$storage_category/"; then
-              rmdir "$local_image_root/$storage_category"
-
-              npx --yes @railway/cli@latest service files \
-                --service esport-team-manager \
-                --environment production \
-                download --overwrite \
+              download_remote_directory \
                 "$private_image_root/$storage_category" \
                 "$local_image_root/$storage_category"
             fi
           done
 
-      - name: Chiffrer et contrôler les sauvegardes
+          local_file_count="$(find "$local_image_root" -type f | wc -l)"
+
+          if [ "$remote_file_count" -ne "$local_file_count" ]; then
+            printf 'Le nombre de fichiers tÃ©lÃ©chargÃ©s est diffÃ©rent du nombre de fichiers distants : %s fichier(s) distant(s), %s fichier(s) local(aux).\n' \
+              "$remote_file_count" "$local_file_count" >&2
+            exit 1
+          fi
+
+          printf 'file_count=%s\n' "$local_file_count" >> "$GITHUB_OUTPUT"
+          printf '%s fichier(s) privÃ©(s) persistant(s) tÃ©lÃ©chargÃ©(s).\n' "$local_file_count"
+
+      - name: Chiffrer et contrÃ´ler les sauvegardes
         shell: bash
         run: |
           backup_directory="${{ steps.metadata.outputs.backup_directory }}"
@@ -135,37 +181,39 @@ jobs:
 
           sha256sum production.dump > production.dump.sha256
           find private-images -type f -print0 | sort --zero-terminated | xargs --null --no-run-if-empty sha256sum > private-images.sha256
+          printf '%s\n' "${{ steps.private_images.outputs.file_count }}" > private-images.count
 
-          printf "Création de l'archive PostgreSQL.\n"
+          printf "CrÃ©ation de l'archive PostgreSQL.\n"
           tar --create --gzip \
             --file production-database.tar.gz \
             production.dump \
             production.dump.sha256
 
-          printf "Création de l'archive des images privées.\n"
+          printf "CrÃ©ation de l'archive des images privÃ©es.\n"
           tar --create --gzip \
             --file production-private-images.tar.gz \
             private-images \
-            private-images.sha256
+            private-images.sha256 \
+            private-images.count
 
           for archive_name in production-database.tar.gz production-private-images.tar.gz; do
             encrypted_name="$archive_name.enc"
             verification_name="$archive_name.verification"
 
-            printf 'Chiffrement authentifié de %s.\n' "$archive_name"
+            printf 'Chiffrement authentifiÃ© de %s.\n' "$archive_name"
             node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
               encrypt "$archive_name" "$encrypted_name"
 
             sha256sum "$encrypted_name" > "$encrypted_name.sha256"
 
-            printf 'Déchiffrement de contrôle de %s.\n' "$archive_name"
+            printf 'DÃ©chiffrement de contrÃ´le de %s.\n' "$archive_name"
             node "$GITHUB_WORKSPACE/scripts/backup-encryption.mjs" \
               decrypt "$encrypted_name" "$verification_name"
 
             if ! cmp --silent "$archive_name" "$verification_name"; then
               original_digest="$(sha256sum "$archive_name" | cut -d ' ' -f 1)"
               verification_digest="$(sha256sum "$verification_name" | cut -d ' ' -f 1)"
-              printf "Le déchiffrement de contrôle de %s diffère de l'archive originale. Empreinte originale : %s. Empreinte de contrôle : %s.\n" \
+              printf "Le dÃ©chiffrement de contrÃ´le de %s diffÃ¨re de l'archive originale. Empreinte originale : %s. Empreinte de contrÃ´le : %s.\n" \
                 "$archive_name" "$original_digest" "$verification_digest" >&2
               exit 1
             fi
@@ -173,7 +221,7 @@ jobs:
             rm -f "$archive_name" "$verification_name"
           done
 
-          rm -f production.dump production.dump.sha256 private-images.sha256
+          rm -f production.dump production.dump.sha256 private-images.sha256 private-images.count
           rm -rf "$backup_directory/private-images"
 
       - name: Conserver la sauvegarde PostgreSQL pendant 30 jours
@@ -198,13 +246,13 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Résumer la sauvegarde
+      - name: RÃ©sumer la sauvegarde
         shell: bash
         run: |
           {
-            printf '### Sauvegarde de production réussie\n\n'
+            printf '### Sauvegarde de production rÃ©ussie\n\n'
             printf -- '- Identifiant : %s\n' "${{ steps.metadata.outputs.backup_id }}"
-            printf -- '- PostgreSQL : dump vérifié, chiffré avec AES-256-GCM et conservé 30 jours.\n'
-            printf -- '- Images privées : fichiers persistants vérifiés, chiffrés avec AES-256-GCM et conservés 30 jours.\n'
+            printf -- '- PostgreSQL : dump vÃ©rifiÃ©, chiffrÃ© avec AES-256-GCM et conservÃ© 30 jours.\n'
+            printf -- '- Images privÃ©es : %s fichier(s) persistant(s) vÃ©rifiÃ©(s), chiffrÃ©(s) avec AES-256-GCM et conservÃ©(s) 30 jours.\n' "${{ steps.private_images.outputs.file_count }}"
             printf -- '- Stockages applicatifs inclus : team-logos et strategy-images.\n'
           } >> "$GITHUB_STEP_SUMMARY"
