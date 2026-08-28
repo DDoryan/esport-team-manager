@@ -21,7 +21,7 @@ jobs:
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
-      RAILWAY_SSH_PRIVATE_KEY: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY }}
+      RAILWAY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY_BASE64 }}
 
     steps:
       - name: Vérifier les secrets requis
@@ -29,7 +29,7 @@ jobs:
         run: |
           missing_secret=false
 
-          for secret_name in RAILWAY_TOKEN BACKUP_ENCRYPTION_PASSWORD RAILWAY_SSH_PRIVATE_KEY; do
+          for secret_name in RAILWAY_TOKEN BACKUP_ENCRYPTION_PASSWORD RAILWAY_SSH_PRIVATE_KEY_BASE64; do
             if [ -z "${!secret_name:-}" ]; then
               printf 'Le secret %s est absent.\n' "$secret_name"
               missing_secret=true
@@ -87,7 +87,7 @@ jobs:
           railway_ssh_key="$HOME/.ssh/railway_backup_production_github_actions"
 
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$RAILWAY_SSH_PRIVATE_KEY" > "$railway_ssh_key"
+          printf '%s' "$RAILWAY_SSH_PRIVATE_KEY_BASE64" | base64 --decode > "$railway_ssh_key"
           chmod 600 "$railway_ssh_key"
           ssh-keygen -y -f "$railway_ssh_key" > "$railway_ssh_key.pub"
           chmod 644 "$railway_ssh_key.pub"
