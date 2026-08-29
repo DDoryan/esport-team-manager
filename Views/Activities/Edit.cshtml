@@ -245,19 +245,138 @@
             </section>
 
             <section class="activity-edit-section" aria-labelledby="activity-links-title">
-                <h2 id="activity-links-title" class="activity-edit-section-title">Liens</h2>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 id="activity-links-title" class="activity-edit-section-title mb-0">Liens</h2>
 
-                @if (Model.Links.Count == 0)
+                    @if (Model.CanEdit)
+                    {
+                        <button id="activity-edit-add-link"
+                                class="btn btn-outline-secondary btn-sm"
+                                type="button"
+                                data-add-activity-link>
+                            <span aria-hidden="true">+</span>
+                            Ajouter un lien
+                        </button>
+                    }
+                </div>
+
+                @if (Model.CanEdit)
                 {
-                    <p class="text-body-secondary mb-0">Aucun lien associé.</p>
+                    <p class="d-flex flex-wrap align-items-center gap-2 text-body-secondary mt-3 mb-3">
+                        <span class="badge text-bg-success">HTTPS recommandé</span>
+                        <span>Les liens HTTP restent acceptés.</span>
+                    </p>
+
+                    <div id="activity-edit-link-list"
+                         class="activity-link-list"
+                         aria-label="Liens de l’activité"
+                         aria-live="polite"
+                         data-activity-link-list>
+                        @for (int index = 0; index < Model.Links.Count; index++)
+                        {
+                            <div class="activity-link-item" data-activity-link-row data-link-index="@index">
+                                <input type="hidden" name="Links.Index" value="@index" />
+                                <input asp-for="Links[index].ActivityLinkId" type="hidden" />
+
+                                <div class="row g-3 align-items-start">
+                                    <div class="col-12 col-md-4">
+                                        <label asp-for="Links[index].Name" class="form-label"></label>
+                                        <input asp-for="Links[index].Name"
+                                               class="form-control activity-edit-control"
+                                               maxlength="100" />
+                                        <span asp-validation-for="Links[index].Name" class="text-danger"></span>
+                                    </div>
+
+                                    <div class="col-12 col-md">
+                                        <label asp-for="Links[index].Url" class="form-label"></label>
+                                        <input asp-for="Links[index].Url"
+                                               class="form-control activity-edit-control"
+                                               type="url"
+                                               maxlength="2048" />
+                                        <span asp-validation-for="Links[index].Url" class="text-danger"></span>
+                                    </div>
+
+                                    <div class="col-12 col-md-auto activity-link-remove-column">
+                                        <button class="btn btn-outline-danger btn-sm"
+                                                type="button"
+                                                data-remove-activity-link
+                                                aria-label="Supprimer ce lien">
+                                            Supprimer
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <template id="activity-edit-link-template">
+                        <div class="activity-link-item" data-activity-link-row>
+                            <input type="hidden" name="Links.Index" data-link-index-field />
+                            <input type="hidden" value="@Guid.Empty" data-link-id-input />
+
+                            <div class="row g-3 align-items-start">
+                                <div class="col-12 col-md-4">
+                                    <label class="form-label" data-link-name-label>Nom du lien</label>
+                                    <input class="form-control activity-edit-control"
+                                           type="text"
+                                           maxlength="100"
+                                           data-link-name-input
+                                           data-val="true"
+                                           data-val-required="Le nom du lien est obligatoire."
+                                           data-val-length="Le nom du lien ne peut pas dépasser 100 caractères."
+                                           data-val-length-max="100" />
+                                    <span class="text-danger field-validation-valid"
+                                          data-link-name-validation
+                                          data-valmsg-replace="true"></span>
+                                </div>
+
+                                <div class="col-12 col-md">
+                                    <label class="form-label" data-link-url-label>URL</label>
+                                    <input class="form-control activity-edit-control"
+                                           type="url"
+                                           maxlength="2048"
+                                           data-link-url-input
+                                           data-val="true"
+                                           data-val-required="L’URL du lien est obligatoire."
+                                           data-val-length="L’URL du lien ne peut pas dépasser 2 048 caractères."
+                                           data-val-length-max="2048"
+                                           data-val-regex="L’URL doit utiliser le protocole HTTP ou HTTPS."
+                                           data-val-regex-pattern="^[Hh][Tt][Tt][Pp][Ss]?://.+$" />
+                                    <span class="text-danger field-validation-valid"
+                                          data-link-url-validation
+                                          data-valmsg-replace="true"></span>
+                                </div>
+
+                                <div class="col-12 col-md-auto activity-link-remove-column">
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            type="button"
+                                            data-remove-activity-link
+                                            aria-label="Supprimer ce lien">
+                                        Supprimer
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                }
+                else if (Model.Links.Count == 0)
+                {
+                    <p class="text-body-secondary mt-3 mb-0">Aucun lien associé.</p>
                 }
                 else
                 {
-                    <div class="activity-edit-link-list">
+                    <div class="activity-edit-link-list mt-3">
                         @foreach (var link in Model.Links)
                         {
+                            bool linkUsesHttps = link.Url?.StartsWith("https://", StringComparison.OrdinalIgnoreCase) == true;
+
                             <div class="activity-edit-link">
-                                <span>@link.Name</span>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span>@link.Name</span>
+                                    <span class="badge @(linkUsesHttps ? "text-bg-success" : "text-bg-secondary")">
+                                        @(linkUsesHttps ? "HTTPS" : "HTTP")
+                                    </span>
+                                </div>
 
                                 <a href="@link.Url" target="_blank" rel="noopener noreferrer">
                                     @link.Url

@@ -4,6 +4,9 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
 {
     const activityTypeSelect = activityEditForm.querySelector("[data-activity-type-select]");
     const activityMatchSection = activityEditForm.querySelector("[data-activity-match-section]");
+    const activityAddLinkButton = activityEditForm.querySelector("[data-add-activity-link]");
+    const activityLinkList = activityEditForm.querySelector("[data-activity-link-list]");
+    const activityLinkTemplate = document.getElementById("activity-edit-link-template");
     let formIsSubmitting = false;
 
     function createFormSnapshot()
@@ -58,8 +61,141 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
         return jqueryForm.valid();
     }
 
+    function configureActivityLinkRemoval(activityLinkRow)
+    {
+        const removeButton = activityLinkRow.querySelector("[data-remove-activity-link]");
+
+        if (removeButton === null)
+        {
+            return;
+        }
+
+        removeButton.addEventListener("click", () =>
+        {
+            activityLinkRow.remove();
+        });
+    }
+
+    function configureActivityLinkRow(activityLinkRow, linkIndex)
+    {
+        const indexValue = String(linkIndex);
+        const indexField = activityLinkRow.querySelector("[data-link-index-field]");
+        const idInput = activityLinkRow.querySelector("[data-link-id-input]");
+        const nameLabel = activityLinkRow.querySelector("[data-link-name-label]");
+        const nameInput = activityLinkRow.querySelector("[data-link-name-input]");
+        const nameValidation = activityLinkRow.querySelector("[data-link-name-validation]");
+        const urlLabel = activityLinkRow.querySelector("[data-link-url-label]");
+        const urlInput = activityLinkRow.querySelector("[data-link-url-input]");
+        const urlValidation = activityLinkRow.querySelector("[data-link-url-validation]");
+
+        activityLinkRow.dataset.linkIndex = indexValue;
+
+        if (indexField !== null)
+        {
+            indexField.value = indexValue;
+        }
+
+        if (idInput !== null)
+        {
+            idInput.id = `Links_${indexValue}__ActivityLinkId`;
+            idInput.name = `Links[${indexValue}].ActivityLinkId`;
+        }
+
+        if (nameLabel !== null)
+        {
+            nameLabel.htmlFor = `Links_${indexValue}__Name`;
+        }
+
+        if (nameInput !== null)
+        {
+            nameInput.id = `Links_${indexValue}__Name`;
+            nameInput.name = `Links[${indexValue}].Name`;
+        }
+
+        if (nameValidation !== null)
+        {
+            nameValidation.dataset.valmsgFor = `Links[${indexValue}].Name`;
+        }
+
+        if (urlLabel !== null)
+        {
+            urlLabel.htmlFor = `Links_${indexValue}__Url`;
+        }
+
+        if (urlInput !== null)
+        {
+            urlInput.id = `Links_${indexValue}__Url`;
+            urlInput.name = `Links[${indexValue}].Url`;
+        }
+
+        if (urlValidation !== null)
+        {
+            urlValidation.dataset.valmsgFor = `Links[${indexValue}].Url`;
+        }
+
+        configureActivityLinkRemoval(activityLinkRow);
+    }
+
+    function initializeActivityLinkRows()
+    {
+        if (activityLinkList === null)
+        {
+            return 0;
+        }
+
+        let nextIndex = 0;
+        const existingRows = activityLinkList.querySelectorAll("[data-activity-link-row]");
+
+        for (const existingRow of existingRows)
+        {
+            const existingIndex = Number(existingRow.dataset.linkIndex);
+
+            if (Number.isInteger(existingIndex) && existingIndex >= nextIndex)
+            {
+                nextIndex = existingIndex + 1;
+            }
+
+            configureActivityLinkRemoval(existingRow);
+        }
+
+        return nextIndex;
+    }
+
     updateMatchSectionVisibility();
     focusFirstInvalidField();
+
+    let nextActivityLinkIndex = initializeActivityLinkRows();
+
+    if (activityAddLinkButton !== null && activityLinkList !== null && activityLinkTemplate instanceof HTMLTemplateElement)
+    {
+        activityAddLinkButton.addEventListener("click", () =>
+        {
+            const activityLinkFragment = activityLinkTemplate.content.cloneNode(true);
+            const activityLinkRow = activityLinkFragment.querySelector("[data-activity-link-row]");
+
+            if (activityLinkRow === null)
+            {
+                return;
+            }
+
+            configureActivityLinkRow(activityLinkRow, nextActivityLinkIndex);
+            nextActivityLinkIndex += 1;
+
+            activityLinkList.append(activityLinkFragment);
+
+            if (window.jQuery?.validator?.unobtrusive !== undefined)
+            {
+                window.jQuery.validator.unobtrusive.parse(activityLinkRow);
+            }
+
+            const nameInput = activityLinkRow.querySelector("[data-link-name-input]");
+
+            if (nameInput instanceof HTMLElement)
+            {
+                nameInput.focus();
+            }
+        });
+    }
 
     const initialFormSnapshot = createFormSnapshot();
 

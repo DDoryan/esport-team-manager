@@ -20,8 +20,12 @@ public sealed class UpdateActivityRequest
 
     public string? Report { get; }
 
-    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report)
+    public IReadOnlyCollection<UpdateActivityLinkRequest> Links { get; }
+
+    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityLinkRequest> links)
     {
+        ArgumentNullException.ThrowIfNull(links);
+
         UserId = userId;
         TeamId = teamId;
         ActivityId = activityId;
@@ -31,5 +35,6 @@ public sealed class UpdateActivityRequest
         Subtitle = subtitle;
         Description = description;
         Report = report;
+        Links = links.ToArray();
     }
 }

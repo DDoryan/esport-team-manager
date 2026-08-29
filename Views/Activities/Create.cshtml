@@ -91,7 +91,15 @@
                                     </button>
                                 </div>
 
-                                <div id="activity-link-list" class="activity-link-list app-scroll-region" tabindex="0" aria-label="Liens de l’activité">
+                                <p class="d-flex flex-wrap align-items-center gap-2 text-body-secondary mb-3">
+                                    <span class="badge text-bg-success">HTTPS recommandé</span>
+                                    <span>Les liens HTTP restent acceptés.</span>
+                                </p>
+
+                                <div id="activity-link-list"
+                                     class="activity-link-list"
+                                     aria-label="Liens de l’activité"
+                                     aria-live="polite">
                                     @for (int index = 0; index < Model.Links.Count; index++)
                                     {
                                         <div class="activity-link-item" data-activity-link-row data-link-index="@index">
@@ -154,7 +162,7 @@
                                                        data-val-length="L’URL du lien ne peut pas dépasser 2 048 caractères."
                                                        data-val-length-max="2048"
                                                        data-val-regex="L’URL doit utiliser le protocole HTTP ou HTTPS."
-                                                       data-val-regex-pattern="^https?://.+$" />
+                                                       data-val-regex-pattern="^[Hh][Tt][Tt][Pp][Ss]?://.+$" />
                                                 <span class="text-danger field-validation-valid"
                                                       data-link-url-validation
                                                       data-valmsg-replace="true"></span>

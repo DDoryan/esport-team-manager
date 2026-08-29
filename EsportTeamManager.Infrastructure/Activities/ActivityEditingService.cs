@@ -262,6 +262,13 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure(["La fin prévue doit être strictement postérieure au début prévu."]);
         }
 
+        string? linkSynchronizationError = await SynchronizeLinksAsync(request.ActivityId, request.Links, cancellationToken);
+
+        if (linkSynchronizationError is not null)
+        {
+            return UpdateActivityResult.Failure([linkSynchronizationError]);
+        }
+
         DateTimeOffset updatedAtUtc = _timeProvider.GetUtcNow();
         MatchDetail? previousMatchDetail = activity.MatchDetail;
 
@@ -301,5 +308,76 @@ public sealed class ActivityEditingService : IActivityEditingService
         }
 
         return UpdateActivityResult.Success();
+    }
+
+    private async Task<string?> SynchronizeLinksAsync(Guid activityId, IReadOnlyCollection<UpdateActivityLinkRequest> requestedLinks, CancellationToken cancellationToken)
+    {
+        List<ActivityLink> existingLinks = await _context.ActivityLinks
+            .Where(link => link.ActivityId == activityId)
+            .ToListAsync(cancellationToken);
+
+        Dictionary<Guid, ActivityLink> existingLinksById = existingLinks
+            .ToDictionary(link => link.ActivityLinkId);
+
+        HashSet<Guid> requestedExistingLinkIds = [];
+
+        foreach (UpdateActivityLinkRequest requestedLink in requestedLinks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (requestedLink.ActivityLinkId == Guid.Empty)
+            {
+                continue;
+            }
+
+            if (!requestedExistingLinkIds.Add(requestedLink.ActivityLinkId))
+            {
+                return "La demande contient plusieurs fois le même lien.";
+            }
+
+            if (!existingLinksById.ContainsKey(requestedLink.ActivityLinkId))
+            {
+                return "Un lien fourni n’appartient pas à cette activité.";
+            }
+        }
+
+        List<(UpdateActivityLinkRequest Request, ActivityLink ValidatedLink)> validatedLinks = [];
+
+        try
+        {
+            foreach (UpdateActivityLinkRequest requestedLink in requestedLinks)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                ActivityLink validatedLink = new(activityId, requestedLink.Name, requestedLink.Url);
+
+                validatedLinks.Add((requestedLink, validatedLink));
+            }
+        }
+        catch (DomainException)
+        {
+            return "Les informations fournies ne permettent pas de modifier les liens de l’activité.";
+        }
+
+        foreach ((UpdateActivityLinkRequest requestedLink, ActivityLink validatedLink) in validatedLinks)
+        {
+            if (requestedLink.ActivityLinkId == Guid.Empty)
+            {
+                _context.ActivityLinks.Add(validatedLink);
+
+                continue;
+            }
+
+            ActivityLink existingLink = existingLinksById[requestedLink.ActivityLinkId];
+
+            existingLink.Update(validatedLink.Name, validatedLink.Url);
+        }
+
+        IEnumerable<ActivityLink> removedLinks = existingLinks
+            .Where(link => !requestedExistingLinkIds.Contains(link.ActivityLinkId));
+
+        _context.ActivityLinks.RemoveRange(removedLinks);
+
+        return null;
     }
 }
