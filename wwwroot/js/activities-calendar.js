@@ -136,6 +136,24 @@ function updateSelectedDateButton(calendarElement, datePickerElement, selectedDa
     datePickerElement.value = selectedDateKey;
 }
 
+function updateMobileSelectedDateButton(buttonElement, selectedDate, timeZone)
+{
+    const selectedDateKey = formatDateKey(selectedDate, timeZone);
+    const todayDateKey = formatDateKey(new Date(), timeZone);
+    const isToday = selectedDateKey === todayDateKey;
+    const formatter = new Intl.DateTimeFormat("fr-FR",
+    {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: timeZone
+    });
+    const selectedDateLabel = isToday ? "Aujourd’hui" : formatter.format(selectedDate);
+
+    buttonElement.textContent = selectedDateLabel;
+    buttonElement.setAttribute("aria-label", isToday ? "Aujourd’hui" : `Date sélectionnée : ${selectedDateLabel}. Cliquer pour revenir à aujourd’hui.`);
+}
+
 function updateViewButtons(calendarElement, activeViewType)
 {
     const fourWeekButtonElement = calendarElement.querySelector(".calendar-four-week-view-button");
@@ -182,11 +200,29 @@ function alignDatePickerWithButton(calendarElement, datePickerElement)
         return;
     }
 
+    alignDatePickerWithElement(datePickerElement, buttonElement);
+}
+
+function alignDatePickerWithElement(datePickerElement, buttonElement)
+{
     const buttonRectangle = buttonElement.getBoundingClientRect();
 
     datePickerElement.style.top = `${buttonRectangle.top}px`;
     datePickerElement.style.left = `${buttonRectangle.left}px`;
     datePickerElement.style.width = `${buttonRectangle.width}px`;
+    datePickerElement.style.height = `${buttonRectangle.height}px`;
+}
+
+function alignMobileDatePickerWithButton(datePickerElement, buttonElement)
+{
+    const buttonRectangle = buttonElement.getBoundingClientRect();
+    const viewportMargin = 8;
+    const pickerWidth = Math.min(220, window.innerWidth - (viewportMargin * 2));
+    const pickerLeft = Math.max(viewportMargin, buttonRectangle.right - pickerWidth);
+
+    datePickerElement.style.top = `${buttonRectangle.top}px`;
+    datePickerElement.style.left = `${pickerLeft}px`;
+    datePickerElement.style.width = `${pickerWidth}px`;
     datePickerElement.style.height = `${buttonRectangle.height}px`;
 }
 
@@ -209,6 +245,129 @@ function getCalendarActivityTypeClass(typeCode)
         default:
             return "calendar-activity-event-default";
     }
+}
+
+function getCalendarActivityStatusIconClass(status)
+{
+    switch (status)
+    {
+        case "Completed":
+            return "bi-check-lg";
+
+        case "Cancelled":
+            return "bi-x-lg";
+
+        default:
+            return "bi-clock";
+    }
+}
+
+function createCalendarActivityStatusIcon(status)
+{
+    const iconElement = document.createElement("i");
+
+    iconElement.className = `bi ${getCalendarActivityStatusIconClass(status)}`;
+    iconElement.setAttribute("aria-hidden", "true");
+
+    return iconElement;
+}
+
+function getSelectedCalendarFilterValues(filterInputs, kind)
+{
+    return new Set(filterInputs
+        .filter(input => input.dataset.calendarFilterKind === kind && input.checked)
+        .map(input => input.value));
+}
+
+function isCalendarEventSelected(eventData, filterInputs)
+{
+    const selectedTypes = getSelectedCalendarFilterValues(filterInputs, "type");
+    const selectedStatuses = getSelectedCalendarFilterValues(filterInputs, "status");
+    const typeCode = typeof eventData.typeCode === "string" ? eventData.typeCode : "";
+    const status = typeof eventData.status === "string" ? eventData.status : "Planned";
+
+    return selectedTypes.has(typeCode) && selectedStatuses.has(status);
+}
+
+function synchronizeCalendarFilterInputs(filterInputs, changedInput)
+{
+    for (const input of filterInputs)
+    {
+        if (input !== changedInput && input.dataset.calendarFilterKind === changedInput.dataset.calendarFilterKind && input.value === changedInput.value)
+        {
+            input.checked = changedInput.checked;
+        }
+    }
+}
+
+function applyInitialCalendarFilterSelection(filterInputs, isMobile)
+{
+    const completedIsSelected = !isMobile;
+
+    for (const input of filterInputs)
+    {
+        if (input.dataset.calendarFilterKind === "status" && input.value === "Completed")
+        {
+            input.checked = completedIsSelected;
+        }
+    }
+}
+
+function updateCalendarActiveFilterCount(filterInputs, countElements)
+{
+    const filters = new Map();
+
+    for (const input of filterInputs)
+    {
+        const key = `${input.dataset.calendarFilterKind ?? ""}:${input.value}`;
+
+        if (!filters.has(key))
+        {
+            filters.set(key, input);
+        }
+    }
+
+    const activeFilterCount = [...filters.values()]
+        .filter(input => input.checked)
+        .length;
+
+    for (const countElement of countElements)
+    {
+        countElement.textContent = activeFilterCount.toString();
+    }
+}
+
+async function loadCalendarEvents(eventsUrl, fetchInfo, filterInputs)
+{
+    const selectedStatuses = getSelectedCalendarFilterValues(filterInputs, "status");
+    const requestUrl = new URL(eventsUrl, window.location.origin);
+
+    requestUrl.searchParams.set("start", fetchInfo.startStr);
+    requestUrl.searchParams.set("end", fetchInfo.endStr);
+    requestUrl.searchParams.set("includeCancelled", selectedStatuses.has("Cancelled").toString());
+
+    const response = await fetch(requestUrl,
+    {
+        method: "GET",
+        headers:
+        {
+            Accept: "application/json"
+        }
+    });
+
+    if (!response.ok)
+    {
+        throw new Error(`Le chargement des activités a échoué avec le statut ${response.status}.`);
+    }
+
+    const events = await response.json();
+
+    if (!Array.isArray(events))
+    {
+        throw new Error("La réponse du calendrier est invalide.");
+    }
+
+    return events.filter(event => isCalendarEventSelected(event, filterInputs));
 }
 
 function getCalendarActivityComplement(event)
@@ -340,7 +499,8 @@ function createMobileActivityListItem(event, timeZone)
     }
 
     statusElement.className = "team-activity-list-item-status";
-    statusElement.textContent = status === "Completed" ? `${statusLabel} ✓` : statusLabel;
+    statusElement.textContent = `${statusLabel} `;
+    statusElement.append(createCalendarActivityStatusIcon(status));
 
     contentElement.append(statusElement);
 
@@ -351,21 +511,25 @@ function createMobileActivityListItem(event, timeZone)
     return listItemElement;
 }
 
-function renderMobileActivityList(activityListElement, activityListItemsElement, loadingElement, emptyElement, events, timeZone)
+function doesCalendarEventOccurOnDate(event, selectedDate, timeZone)
 {
-    const currentDate = new Date();
+    if (!(event.start instanceof Date))
+    {
+        return false;
+    }
+
+    const eventEnd = event.end instanceof Date && event.end.getTime() > event.start.getTime() ? new Date(event.end.getTime() - 1) : event.start;
+    const selectedDateKey = formatDateKey(selectedDate, timeZone);
+    const startDateKey = formatDateKey(event.start, timeZone);
+    const endDateKey = formatDateKey(eventEnd, timeZone);
+
+    return selectedDateKey >= startDateKey && selectedDateKey <= endDateKey;
+}
+
+function renderMobileActivityList(activityListElement, activityListItemsElement, loadingElement, emptyElement, events, selectedDate, timeZone)
+{
     const chronologicalEvents = [...events]
-        .filter(event =>
-        {
-            if (!(event.start instanceof Date))
-            {
-                return false;
-            }
-
-            const endDate = event.end instanceof Date ? event.end : event.start;
-
-            return endDate.getTime() >= currentDate.getTime();
-        })
+        .filter(event => doesCalendarEventOccurOnDate(event, selectedDate, timeZone))
         .sort((firstEvent, secondEvent) =>
         {
             const startDifference = firstEvent.start.getTime() - secondEvent.start.getTime();
@@ -440,31 +604,19 @@ function createCalendarActivityEventContent(info)
 
     contentElement.append(labelElement);
 
-    if (status === "Completed")
-    {
-        const statusElement = document.createElement("span");
+    const statusElement = document.createElement("span");
 
-        statusElement.className = "calendar-activity-event-status";
-        statusElement.textContent = "✓";
-        statusElement.setAttribute("aria-label", "Terminée");
+    statusElement.className = "calendar-activity-event-status";
+    statusElement.append(createCalendarActivityStatusIcon(status));
+    statusElement.setAttribute("aria-label", getCalendarActivityStatusLabel(status));
 
-        contentElement.append(statusElement);
-    }
-
-    if (status === "Cancelled")
-    {
-        const statusElement = document.createElement("span");
-
-        statusElement.className = "calendar-activity-event-status";
-        statusElement.textContent = "Annulée";
-
-        contentElement.append(statusElement);
-    }
+    contentElement.append(statusElement);
 
     return { domNodes: [contentElement] };
 }
 
-function configureCalendarActivityEvent(info) {
+function configureCalendarActivityEvent(info)
+{
     const typeCode = typeof info.event.extendedProps.typeCode === "string" ? info.event.extendedProps.typeCode : "";
     const complement = getCalendarActivityComplement(info.event);
     const status = typeof info.event.extendedProps.status === "string" ? info.event.extendedProps.status : "";
@@ -473,15 +625,18 @@ function configureCalendarActivityEvent(info) {
 
     info.el.classList.add(getCalendarActivityTypeClass(typeCode));
 
-    if (status === "Completed") {
+    if (status === "Completed")
+    {
         info.el.classList.add("calendar-activity-event-completed");
     }
 
-    if (status === "Cancelled") {
+    if (status === "Cancelled")
+    {
         info.el.classList.add("calendar-activity-event-cancelled");
     }
 
-    if (info.timeText.length > 0) {
+    if (info.timeText.length > 0)
+    {
         accessibleParts.push(info.timeText);
     }
 
@@ -503,6 +658,12 @@ document.addEventListener("DOMContentLoaded", () =>
     const activityListItemsElement = activityListElement?.querySelector(".team-activity-list-items") ?? null;
     const activityListLoadingElement = activityListElement?.querySelector(".team-activity-list-loading") ?? null;
     const activityListEmptyElement = activityListElement?.querySelector(".team-activity-list-empty") ?? null;
+    const calendarFilterInputs = [...document.querySelectorAll("[data-calendar-filter-kind]")];
+    const calendarActiveFilterCountElements = [...document.querySelectorAll("[data-calendar-active-filter-count]")];
+    const mobilePreviousDayButtonElement = document.querySelector("[data-mobile-calendar-action='previous']");
+    const mobileTodayButtonElement = document.querySelector("[data-mobile-calendar-action='today']");
+    const mobileNextDayButtonElement = document.querySelector("[data-mobile-calendar-action='next']");
+    const mobileDatePickerButtonElement = document.querySelector("[data-mobile-calendar-action='date-picker']");
 
     if (calendarElement === null)
     {
@@ -522,7 +683,7 @@ document.addEventListener("DOMContentLoaded", () =>
     const eventsUrl = calendarElement.dataset.eventsUrl;
     const teamTimeZone = calendarElement.dataset.teamTimeZone;
 
-    if (!eventsUrl || !teamTimeZone || datePickerElement === null || activityListElement === null || activityListItemsElement === null || activityListLoadingElement === null || activityListEmptyElement === null)
+    if (!eventsUrl || !teamTimeZone || datePickerElement === null || activityListElement === null || activityListItemsElement === null || activityListLoadingElement === null || activityListEmptyElement === null || mobilePreviousDayButtonElement === null || mobileTodayButtonElement === null || mobileNextDayButtonElement === null || mobileDatePickerButtonElement === null)
     {
         if (loadErrorElement !== null)
         {
@@ -533,6 +694,9 @@ document.addEventListener("DOMContentLoaded", () =>
     }
 
     const mobileMediaQuery = window.matchMedia("(max-width: 575.98px)");
+    let mobileCalendarEvents = [];
+
+    applyInitialCalendarFilterSelection(calendarFilterInputs, mobileMediaQuery.matches);
 
     const calendar = new FullCalendar.Calendar(calendarElement,
     {
@@ -547,7 +711,8 @@ document.addEventListener("DOMContentLoaded", () =>
         nowIndicator: false,
         height: "100%",
         expandRows: true,
-        dayMaxEvents: true,
+        dayMaxEvents: 2,
+        moreLinkContent: info => `+ ${info.num} autres`,
         displayEventEnd: false,
         eventDisplay: "block",
         eventClass: "calendar-activity-event",
@@ -677,14 +842,23 @@ document.addEventListener("DOMContentLoaded", () =>
                 allDaySlot: false
             }
         },
-        events:
+        events: async (fetchInfo, successCallback, failureCallback) =>
         {
-            url: eventsUrl,
-            method: "GET"
+            try
+            {
+                const events = await loadCalendarEvents(eventsUrl, fetchInfo, calendarFilterInputs);
+
+                successCallback(events);
+            }
+            catch (error)
+            {
+                failureCallback(error);
+            }
         },
         eventsSet: events =>
         {
-            renderMobileActivityList(activityListElement, activityListItemsElement, activityListLoadingElement, activityListEmptyElement, events, teamTimeZone);
+            mobileCalendarEvents = events;
+            renderMobileActivityList(activityListElement, activityListItemsElement, activityListLoadingElement, activityListEmptyElement, mobileCalendarEvents, calendar.getDate(), teamTimeZone);
         },
         loading: isLoading =>
         {
@@ -693,6 +867,8 @@ document.addEventListener("DOMContentLoaded", () =>
         datesSet: () =>
         {
             updateSelectedDateButton(calendarElement, datePickerElement, calendar.getDate(), teamTimeZone);
+            updateMobileSelectedDateButton(mobileTodayButtonElement, calendar.getDate(), teamTimeZone);
+            renderMobileActivityList(activityListElement, activityListItemsElement, activityListLoadingElement, activityListEmptyElement, mobileCalendarEvents, calendar.getDate(), teamTimeZone);
             updateViewButtons(calendarElement, calendar.view.type);
             updateCalendarAxisWidth(calendarElement);
             alignDatePickerWithButton(calendarElement, datePickerElement);
@@ -718,6 +894,15 @@ document.addEventListener("DOMContentLoaded", () =>
         }
     });
 
+    const refreshMobileSelectedDate = () =>
+    {
+        const selectedDate = calendar.getDate();
+
+        updateSelectedDateButton(calendarElement, datePickerElement, selectedDate, teamTimeZone);
+        updateMobileSelectedDateButton(mobileTodayButtonElement, selectedDate, teamTimeZone);
+        renderMobileActivityList(activityListElement, activityListItemsElement, activityListLoadingElement, activityListEmptyElement, mobileCalendarEvents, selectedDate, teamTimeZone);
+    };
+
     datePickerElement.addEventListener("change", () =>
     {
         const selectedDate = datePickerElement.value;
@@ -728,6 +913,40 @@ document.addEventListener("DOMContentLoaded", () =>
         }
 
         calendar.gotoDate(selectedDate);
+        refreshMobileSelectedDate();
+    });
+
+    mobilePreviousDayButtonElement.addEventListener("click", () =>
+    {
+        calendar.incrementDate({ days: -1 });
+        refreshMobileSelectedDate();
+    });
+
+    mobileTodayButtonElement.addEventListener("click", () =>
+    {
+        calendar.today();
+        refreshMobileSelectedDate();
+    });
+
+    mobileNextDayButtonElement.addEventListener("click", () =>
+    {
+        calendar.incrementDate({ days: 1 });
+        refreshMobileSelectedDate();
+    });
+
+    mobileDatePickerButtonElement.addEventListener("click", () =>
+    {
+        alignMobileDatePickerWithButton(datePickerElement, mobileDatePickerButtonElement);
+
+        if (typeof datePickerElement.showPicker === "function")
+        {
+            datePickerElement.showPicker();
+
+            return;
+        }
+
+        datePickerElement.focus();
+        datePickerElement.click();
     });
 
     window.addEventListener("resize", () =>
@@ -737,12 +956,26 @@ document.addEventListener("DOMContentLoaded", () =>
         updateResponsiveCalendarView(calendar, mobileMediaQuery);
     });
 
-    mobileMediaQuery.addEventListener("change", () =>
+    mobileMediaQuery.addEventListener("change", event =>
     {
+        applyInitialCalendarFilterSelection(calendarFilterInputs, event.matches);
+        updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
+        calendar.refetchEvents();
         updateResponsiveCalendarView(calendar, mobileMediaQuery);
     });
 
+    for (const filterInput of calendarFilterInputs)
+    {
+        filterInput.addEventListener("change", () =>
+        {
+            synchronizeCalendarFilterInputs(calendarFilterInputs, filterInput);
+            updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
+            calendar.refetchEvents();
+        });
+    }
+
     calendar.render();
+    updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
     updateResponsiveCalendarView(calendar, mobileMediaQuery);
     updateSelectedDateButton(calendarElement, datePickerElement, calendar.getDate(), teamTimeZone);
     updateViewButtons(calendarElement, calendar.view.type);

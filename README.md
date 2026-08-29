@@ -7,11 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** TEAM-002 le 28 août 2026, en 6 h pour 6 h estimées.
-- **Avancement :** 33 éléments terminés sur 60 et 130 h estimées restantes.
-- **Validation :** 248 tests automatisés réussis localement sous WSL2 et dans GitHub Actions, Smart App Control maintenu actif, CI de `master` #110 verte, sauvegarde PostgreSQL vérifiée et production Railway validée après le déploiement manuel #13.
-- **Prochain ticket :** QLT-008 — Automatiser les sauvegardes et effectuer une restauration réelle de la base et d’une image.
-- **Projection :** journée du 28 août encore en cours après 6 h, capacité restante de 112 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005, QLT-008 ni la recette.
+- **Dernier ticket clôturé :** QLT-008 le 28 août 2026, en 6 h pour 6 h estimées.
+- **Avancement :** 34 éléments terminés sur 60 et 124 h estimées restantes.
+- **Validation :** 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions, sauvegarde de branche #8, restauration isolée de PostgreSQL et de deux images privées, PR #40 fusionnée et sauvegarde finale `master` #9 avec deux artefacts.
+- **Prochain ticket :** ACT-004 — Représenter clairement les activités dans le calendrier.
+- **Projection :** journée du 28 août clôturée à 12 h, capacité restante de 106 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -41,6 +41,9 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - modification réservée au propriétaire du nom, du tag, du fuseau, de la description et du logo ;
 - logo d’équipe PNG/JPEG/WebP de 2 Mo maximum et 64 × 64 pixels minimum, traité et remplacé par le stockage privé sécurisé ;
 - interface des paramètres alignée à gauche, sans défilement vertical global sur ordinateur et sans débordement horizontal global sur mobile.
+- sauvegarde quotidienne et manuelle de PostgreSQL et des stockages `team-logos`/`strategy-images` par GitHub Actions ;
+- archives séparées chiffrées par AES-256-GCM, contrôlées par SHA-256 et conservées 30 jours ;
+- restauration isolée validée sur PostgreSQL 18 avec 29 tables applicatives, 2 équipes, 5 migrations EF et 2 fichiers WebP privés.
 
 ## Prérequis locaux
 
@@ -94,6 +97,25 @@ Sur Railway, `UseForwardedHeaders()` traite uniquement `X-Forwarded-Proto`. `Use
 
 Le déploiement automatique Railway est désactivé. La production est mise à jour depuis le workflow GitHub Actions `Déployer manuellement en production`, uniquement depuis `master`, après une CI verte et la création puis la vérification d’une sauvegarde PostgreSQL. Le workflow attend la fin réelle du déploiement Railway avant de contrôler `/health`.
 
+## Sauvegarde de production
+
+Le workflow GitHub Actions `Sauvegarder quotidiennement la production` s’exécute à **02 h 15 UTC** et peut aussi être déclenché manuellement. Il utilise l’environnement GitHub `production` et exige les secrets suivants :
+
+- `RAILWAY_TOKEN` ;
+- `BACKUP_ENCRYPTION_PASSWORD` ;
+- `RAILWAY_SSH_PRIVATE_KEY_BASE64`.
+
+Le workflow crée deux artefacts indépendants :
+
+- `production-database-<identifiant UTC>` ;
+- `production-private-images-<identifiant UTC>`.
+
+Chaque artefact contient une archive `.enc` et son empreinte `.sha256`. Les archives sont chiffrées par `scripts/backup-encryption.mjs` avec AES-256-GCM et une clé dérivée par PBKDF2-SHA256 à 200 000 itérations. Un déchiffrement de contrôle doit reproduire exactement l’archive claire avant sa suppression et la publication de l’artefact.
+
+La collecte des images parcourt récursivement uniquement `team-logos` et `strategy-images`, compare le nombre de fichiers distants et téléchargés et conserve des empreintes internes. Les catégories temporaires ne sont pas incluses.
+
+La restauration de validation QLT-008 a été réalisée à partir des artefacts de l’exécution #8 dans un environnement isolé. Elle a confirmé 29 tables applicatives, 2 équipes, 5 migrations EF et 2 fichiers WebP privés. Une restauration de production doit toujours suivre la procédure d’incident et réappliquer les suppressions postérieures au point restauré.
+
 ## Compilation et tests
 
 ```powershell
@@ -101,7 +123,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après TEAM-002 : six projets compilés sans erreur ; 248 tests automatisés réussis localement sous WSL2 et dans GitHub Actions.
+Après QLT-008 : six projets compilés sans erreur ; 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions. QLT-008 n’ajoute pas de test .NET : son workflow et sa restauration sont validés séparément dans le plan de recette.
 
 ### Exécution locale des tests avec Smart App Control
 

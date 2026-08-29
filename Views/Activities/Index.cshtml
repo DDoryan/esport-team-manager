@@ -6,25 +6,104 @@
 }
 
 <section class="team-calendar-page" aria-labelledby="calendar-title">
-    <header class="team-calendar-header mb-4">
-        <div>
-            <h1 id="calendar-title" class="mb-2">@Model.TeamName</h1>
-            <p class="text-body-secondary mb-0">
-                Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
-            </p>
-        </div>
+    <header class="team-calendar-header mb-3">
+        <h1 id="calendar-title" class="mb-2">@Model.TeamName</h1>
+        <p class="text-body-secondary mb-0">
+            Fuseau horaire de l’équipe : <strong>@Model.TimeZoneId</strong>
+        </p>
+    </header>
+
+    <div class="team-calendar-controls">
+        <fieldset class="team-calendar-filters">
+            <legend class="visually-hidden">Filtrer les activités du calendrier</legend>
+
+            <div class="team-calendar-filter-list">
+                <label class="team-calendar-filter calendar-filter-pracc">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="Pracc"
+                           data-calendar-filter-kind="type"
+                           checked />
+                    <span class="team-calendar-filter-marker" aria-hidden="true"></span>
+                    <span>Pracc</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-official-match">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="OfficialMatch"
+                           data-calendar-filter-kind="type"
+                           checked />
+                    <span class="team-calendar-filter-marker" aria-hidden="true"></span>
+                    <span>Match officiel</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-meeting">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="Meeting"
+                           data-calendar-filter-kind="type"
+                           checked />
+                    <span class="team-calendar-filter-marker" aria-hidden="true"></span>
+                    <span>Réunion</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-vod-review">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="VodReview"
+                           data-calendar-filter-kind="type"
+                           checked />
+                    <span class="team-calendar-filter-marker" aria-hidden="true"></span>
+                    <span>Review VOD</span>
+                </label>
+
+                <span class="team-calendar-filter-separator" aria-hidden="true"></span>
+
+                <label class="team-calendar-filter calendar-filter-planned">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="Planned"
+                           data-calendar-filter-kind="status"
+                           checked />
+                    <i class="bi bi-clock team-calendar-filter-icon" aria-hidden="true"></i>
+                    <span>Planifiées</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-completed">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="Completed"
+                           data-calendar-filter-kind="status"
+                           checked />
+                    <i class="bi bi-check-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                    <span>Terminées</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-cancelled">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           value="Cancelled"
+                           data-calendar-filter-kind="status" />
+                    <i class="bi bi-x-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                    <span>Annulées</span>
+                </label>
+            </div>
+        </fieldset>
 
         @if (Model.CanCreateActivity)
         {
-            <a class="btn btn-primary team-calendar-create-button"
-               asp-controller="Activities"
-               asp-action="Create"
-               asp-route-teamId="@Model.TeamId">
-                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
-                Créer une activité
-            </a>
+            <div class="team-calendar-actions">
+                <a class="btn btn-primary team-calendar-create-button"
+                   asp-controller="Activities"
+                   asp-action="Create"
+                   asp-route-teamId="@Model.TeamId">
+                    <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
+                    Créer une activité
+                </a>
+            </div>
         }
-    </header>
+    </div>
 
     <div class="team-calendar-desktop">
         <p id="calendar-scroll-help" class="visually-hidden">
@@ -39,20 +118,104 @@
             </div>
         </div>
 
-        <input id="calendar-date-picker"
-               class="calendar-date-picker"
-               type="date"
-               tabindex="-1"
-               aria-label="Sélectionner une date du calendrier" />
     </div>
+
+    <input id="calendar-date-picker"
+           class="calendar-date-picker"
+           type="date"
+           tabindex="-1"
+           aria-label="Sélectionner une date du calendrier" />
 
     <section id="team-activity-list"
              class="team-activity-list"
              aria-labelledby="team-activity-list-title"
              aria-busy="true">
         <h2 id="team-activity-list-title" class="visually-hidden">
-            Activités des quatre semaines affichées
+            Activités de la journée sélectionnée
         </h2>
+
+        <div class="team-activity-mobile-toolbar">
+            <details class="team-activity-filter-panel">
+                <summary class="team-activity-filter-summary">
+                    <span>Filtres</span>
+                    <span class="team-activity-filter-count">
+                        <span data-calendar-active-filter-count>5</span>
+                        <span class="visually-hidden"> filtres actifs</span>
+                    </span>
+                </summary>
+
+                <fieldset class="team-activity-filter-fieldset">
+                    <legend class="visually-hidden">Filtrer la liste des activités</legend>
+
+                    <label class="team-calendar-filter calendar-filter-pracc">
+                        <input class="form-check-input" type="checkbox" value="Pracc" data-calendar-filter-kind="type" checked />
+                        <span>Pracc</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-official-match">
+                        <input class="form-check-input" type="checkbox" value="OfficialMatch" data-calendar-filter-kind="type" checked />
+                        <span>Match officiel</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-meeting">
+                        <input class="form-check-input" type="checkbox" value="Meeting" data-calendar-filter-kind="type" checked />
+                        <span>Réunion</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-vod-review">
+                        <input class="form-check-input" type="checkbox" value="VodReview" data-calendar-filter-kind="type" checked />
+                        <span>Review VOD</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-planned">
+                        <input class="form-check-input" type="checkbox" value="Planned" data-calendar-filter-kind="status" checked />
+                        <i class="bi bi-clock team-calendar-filter-icon" aria-hidden="true"></i>
+                        <span>Planifiées</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-completed">
+                        <input class="form-check-input" type="checkbox" value="Completed" data-calendar-filter-kind="status" />
+                        <i class="bi bi-check-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                        <span>Terminées</span>
+                    </label>
+
+                    <label class="team-calendar-filter calendar-filter-cancelled">
+                        <input class="form-check-input" type="checkbox" value="Cancelled" data-calendar-filter-kind="status" />
+                        <i class="bi bi-x-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                        <span>Annulées</span>
+                    </label>
+                </fieldset>
+            </details>
+
+            <nav class="team-activity-day-navigation" aria-label="Navigation entre les journées">
+                <button class="calendar-navigation-arrow-button"
+                        type="button"
+                        data-mobile-calendar-action="previous"
+                        aria-label="Afficher le jour précédent">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+
+                <button class="calendar-selected-date-button team-activity-selected-date-button"
+                        type="button"
+                        data-mobile-calendar-action="today">
+                    <span data-mobile-selected-date>Aujourd’hui</span>
+                </button>
+
+                <button class="calendar-navigation-arrow-button"
+                        type="button"
+                        data-mobile-calendar-action="next"
+                        aria-label="Afficher le jour suivant">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+
+                <button class="calendar-date-picker-button"
+                        type="button"
+                        data-mobile-calendar-action="date-picker"
+                        aria-label="Sélectionner une date">
+                    <i class="bi bi-calendar3" aria-hidden="true"></i>
+                </button>
+            </nav>
+        </div>
 
         <p class="team-activity-list-loading text-body-secondary mb-0" role="status">
             Chargement des activités…
@@ -61,7 +224,7 @@
         <ol class="team-activity-list-items list-unstyled mb-0"></ol>
 
         <p class="team-activity-list-empty text-body-secondary mb-0" role="status" hidden>
-            Aucune activité planifiée ou terminée pendant ces quatre semaines.
+            Aucune activité ne correspond aux filtres sélectionnés pour cette journée.
         </p>
     </section>
 
