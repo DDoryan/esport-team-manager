@@ -1,17 +1,42 @@
-﻿namespace RepriseWeb.ViewModels.Activities;
+﻿using System.ComponentModel.DataAnnotations;
 
-public sealed class ActivityEditLinkViewModel
+namespace RepriseWeb.ViewModels.Activities;
+
+public sealed class ActivityEditLinkViewModel : IValidatableObject
 {
-    public Guid ActivityLinkId { get; }
+    public Guid ActivityLinkId { get; set; }
 
-    public string Name { get; }
+    [Required(ErrorMessage = "Le nom du lien est obligatoire.")]
+    [StringLength(100, ErrorMessage = "Le nom du lien ne peut pas dépasser 100 caractères.")]
+    [Display(Name = "Nom du lien")]
+    public string? Name { get; set; }
 
-    public string Url { get; }
+    [Required(ErrorMessage = "L’URL du lien est obligatoire.")]
+    [StringLength(2048, ErrorMessage = "L’URL du lien ne peut pas dépasser 2 048 caractères.")]
+    [Display(Name = "URL")]
+    public string? Url { get; set; }
+
+    public ActivityEditLinkViewModel()
+    {
+    }
 
     public ActivityEditLinkViewModel(Guid activityLinkId, string name, string url)
     {
         ActivityLinkId = activityLinkId;
         Name = name;
         Url = url;
+    }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (string.IsNullOrWhiteSpace(Url))
+        {
+            yield break;
+        }
+
+        if (!Uri.TryCreate(Url.Trim(), UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            yield return new ValidationResult("L’URL doit utiliser le protocole HTTP ou HTTPS.", [nameof(Url)]);
+        }
     }
 }

@@ -58,5 +58,5 @@ public sealed class EditActivityViewModel
 
     public IReadOnlyCollection<ActivityEditParticipantViewModel> Participants { get; set; } = Array.Empty<ActivityEditParticipantViewModel>();
 
-    public IReadOnlyCollection<ActivityEditLinkViewModel> Links { get; set; } = Array.Empty<ActivityEditLinkViewModel>();
+    public List<ActivityEditLinkViewModel> Links { get; set; } = [];
 }

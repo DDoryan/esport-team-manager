@@ -7,11 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalon atteint :** P0 terminé le 23 août 2026.
 - **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** QLT-008 le 28 août 2026, en 6 h pour 6 h estimées.
-- **Avancement :** 34 éléments terminés sur 60 et 124 h estimées restantes.
-- **Validation :** 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions, sauvegarde de branche #8, restauration isolée de PostgreSQL et de deux images privées, PR #40 fusionnée et sauvegarde finale `master` #9 avec deux artefacts.
-- **Prochain ticket :** ACT-004 — Représenter clairement les activités dans le calendrier.
-- **Projection :** journée du 28 août clôturée à 12 h, capacité restante de 106 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
+- **Dernier ticket clôturé :** ACT-004 le 29 août 2026, en 4 h pour 4 h estimées.
+- **Avancement :** 35 éléments terminés sur 60 et 120 h estimées restantes.
+- **Validation :** syntaxe JavaScript valide, compilation réussie, 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions, PR #41 fusionnée, CI de branche #125 et CI `master` #127 réussies, sauvegarde PostgreSQL vérifiée, workflow de production #15, Railway actif, journaux ciblés sans erreur, `/health` `Healthy` et smoke test du calendrier réussi.
+- **Prochain ticket :** ACT-008 — Ajouter plusieurs liens à une activité.
+- **Projection :** journée du 29 août en cours après 4 h, capacité restante de 102 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -44,6 +44,8 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - sauvegarde quotidienne et manuelle de PostgreSQL et des stockages `team-logos`/`strategy-images` par GitHub Actions ;
 - archives séparées chiffrées par AES-256-GCM, contrôlées par SHA-256 et conservées 30 jours ;
 - restauration isolée validée sur PostgreSQL 18 avec 29 tables applicatives, 2 équipes, 5 migrations EF et 2 fichiers WebP privés.
+- calendrier d’équipe enrichi par des filtres de type et d’état, des vues quatre semaines/semaine sur ordinateur et une liste mobile limitée au jour sélectionné ;
+- type et état toujours identifiables par un libellé et une icône en complément de la couleur, avec débordement exact « + N autres ».
 
 ## Prérequis locaux
 
@@ -97,6 +99,8 @@ Sur Railway, `UseForwardedHeaders()` traite uniquement `X-Forwarded-Proto`. `Use
 
 Le déploiement automatique Railway est désactivé. La production est mise à jour depuis le workflow GitHub Actions `Déployer manuellement en production`, uniquement depuis `master`, après une CI verte et la création puis la vérification d’une sauvegarde PostgreSQL. Le workflow attend la fin réelle du déploiement Railway avant de contrôler `/health`.
 
+La clôture d’un ticket déployé suit obligatoirement cet ordre : contrôles locaux, CI de la pull request, fusion, CI `master`, sauvegarde PostgreSQL distante téléchargée avec empreintes SHA-256 distante et locale identiques, workflow GitHub Actions manuel, déploiement Railway `ACTIVE`, recherche ciblée dans les journaux, healthcheck puis smoke test authentifié. Les empreintes de fichiers JavaScript ou CSS ne remplacent pas la vérification du dump PostgreSQL. Un déploiement lancé directement depuis l’interface Railway n’est pas la voie de production contrôlée.
+
 ## Sauvegarde de production
 
 Le workflow GitHub Actions `Sauvegarder quotidiennement la production` s’exécute à **02 h 15 UTC** et peut aussi être déclenché manuellement. Il utilise l’environnement GitHub `production` et exige les secrets suivants :
@@ -123,7 +127,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après QLT-008 : six projets compilés sans erreur ; 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions. QLT-008 n’ajoute pas de test .NET : son workflow et sa restauration sont validés séparément dans le plan de recette.
+Après ACT-004 : six projets compilés sans erreur ; 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions. ACT-004 conserve le nombre de tests .NET et ajoute deux scénarios documentés couvrant l’interface du calendrier et la chaîne contrôlée de livraison en production.
 
 ### Exécution locale des tests avec Smart App Control
 

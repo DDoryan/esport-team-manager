@@ -240,7 +240,21 @@ public class ActivitiesController : Controller
             return View(invalidViewModel);
         }
 
-        UpdateActivityRequest request = new(currentUserId.Value, model.TeamId, model.ActivityId, model.ActivityTypeId!.Value, model.PlannedStartLocal!.Value, model.PlannedEndLocal!.Value, model.Subtitle, model.Description, model.Report);
+        IReadOnlyCollection<UpdateActivityLinkRequest> links = (model.Links ?? [])
+            .Select(link => new UpdateActivityLinkRequest(link.ActivityLinkId, link.Name ?? string.Empty, link.Url ?? string.Empty))
+            .ToArray();
+
+        UpdateActivityRequest request = new(
+            currentUserId.Value,
+            model.TeamId,
+            model.ActivityId,
+            model.ActivityTypeId!.Value,
+            model.PlannedStartLocal!.Value,
+            model.PlannedEndLocal!.Value,
+            model.Subtitle,
+            model.Description,
+            model.Report,
+            links);
         UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
 
         if (!result.Succeeded)
@@ -362,9 +376,6 @@ public class ActivitiesController : Controller
         viewModel.Participants = details.Participants
             .Select(participant => new ActivityEditParticipantViewModel(participant.TeamMembershipId, participant.DisplayName, participant.RoleLabel, participant.IsOwner, CreateAttendanceLabel(participant.Attendance)))
             .ToArray();
-        viewModel.Links = details.Links
-            .Select(link => new ActivityEditLinkViewModel(link.ActivityLinkId, link.Name, link.Url))
-            .ToArray();
 
         if (initializeEditableValues)
         {
@@ -374,6 +385,9 @@ public class ActivitiesController : Controller
             viewModel.PlannedEndLocal = details.PlannedEndLocal;
             viewModel.Description = details.Description;
             viewModel.Report = details.Report;
+            viewModel.Links = details.Links
+                .Select(link => new ActivityEditLinkViewModel(link.ActivityLinkId, link.Name, link.Url))
+                .ToList();
         }
 
         ActivityTypeOptionViewModel? selectedActivityType = viewModel.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == viewModel.ActivityTypeId);
