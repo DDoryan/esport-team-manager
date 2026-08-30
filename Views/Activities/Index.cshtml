@@ -1,4 +1,6 @@
-﻿@model RepriseWeb.ViewModels.Activities.TeamCalendarViewModel
+﻿@using RepriseWeb.ViewModels.Activities
+
+@model RepriseWeb.ViewModels.Activities.TeamCalendarViewModel
 
 @{
     ViewData["Title"] = Model.TeamName;
@@ -89,6 +91,50 @@
                     <span>Annulées</span>
                 </label>
             </div>
+            <div class="team-calendar-advanced-filters">
+                <div class="team-calendar-advanced-filter">
+                    <label for="calendar-search-text">Rechercher</label>
+                    <input id="calendar-search-text"
+                           class="form-control"
+                           type="search"
+                           maxlength="100"
+                           placeholder="Sous-titre, description, compte rendu ou adversaire"
+                           autocomplete="off"
+                           data-calendar-advanced-filter="searchText" />
+                </div>
+
+                <div class="team-calendar-advanced-filter">
+                    <label for="calendar-participant">Participant</label>
+                    <select id="calendar-participant"
+                            class="form-select"
+                            data-calendar-advanced-filter="participant">
+                        <option value="">Tous les participants</option>
+
+                        @foreach (ActivityCalendarParticipantOptionViewModel participant in Model.ParticipantOptions)
+                        {
+                            <option value="@participant.Value">@participant.DisplayName</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="team-calendar-advanced-filter">
+                    <label for="calendar-result">Résultat</label>
+                    <select id="calendar-result"
+                            class="form-select"
+                            data-calendar-advanced-filter="result">
+                        <option value="">Tous les résultats</option>
+                        <option value="Victory">Victoire</option>
+                        <option value="Defeat">Défaite</option>
+                        <option value="Draw">Égalité</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-outline-secondary team-calendar-reset-button"
+                        type="button"
+                        data-calendar-filters-reset>
+                    Réinitialiser
+                </button>
+            </div>
         </fieldset>
 
         @if (Model.CanCreateActivity)
@@ -113,6 +159,7 @@
         <div class="team-calendar-frame" tabindex="0" aria-describedby="calendar-scroll-help">
             <div id="team-calendar"
                  data-events-url="@eventsUrl"
+                 data-team-id="@Model.TeamId"
                  data-team-time-zone="@Model.TimeZoneId"
                  aria-label="Calendrier de l’équipe @Model.TeamName">
             </div>
@@ -184,6 +231,50 @@
                         <i class="bi bi-x-lg team-calendar-filter-icon" aria-hidden="true"></i>
                         <span>Annulées</span>
                     </label>
+                    <div class="team-calendar-advanced-filters team-calendar-advanced-filters-mobile">
+                        <div class="team-calendar-advanced-filter">
+                            <label for="mobile-calendar-search-text">Rechercher</label>
+                            <input id="mobile-calendar-search-text"
+                                   class="form-control"
+                                   type="search"
+                                   maxlength="100"
+                                   placeholder="Texte, adversaire…"
+                                   autocomplete="off"
+                                   data-calendar-advanced-filter="searchText" />
+                        </div>
+
+                        <div class="team-calendar-advanced-filter">
+                            <label for="mobile-calendar-participant">Participant</label>
+                            <select id="mobile-calendar-participant"
+                                    class="form-select"
+                                    data-calendar-advanced-filter="participant">
+                                <option value="">Tous les participants</option>
+
+                                @foreach (ActivityCalendarParticipantOptionViewModel participant in Model.ParticipantOptions)
+                                {
+                                    <option value="@participant.Value">@participant.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="team-calendar-advanced-filter">
+                            <label for="mobile-calendar-result">Résultat</label>
+                            <select id="mobile-calendar-result"
+                                    class="form-select"
+                                    data-calendar-advanced-filter="result">
+                                <option value="">Tous les résultats</option>
+                                <option value="Victory">Victoire</option>
+                                <option value="Defeat">Défaite</option>
+                                <option value="Draw">Égalité</option>
+                            </select>
+                        </div>
+
+                        <button class="btn btn-outline-secondary team-calendar-reset-button"
+                                type="button"
+                                data-calendar-filters-reset>
+                            Réinitialiser les filtres
+                        </button>
+                    </div>
                 </fieldset>
             </details>
 

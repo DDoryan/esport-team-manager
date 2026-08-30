@@ -10,11 +10,16 @@ public sealed class TeamCalendarViewModel
 
     public bool CanCreateActivity { get; }
 
-    public TeamCalendarViewModel(Guid teamId, string teamName, string timeZoneId, bool canCreateActivity)
+    public IReadOnlyCollection<ActivityCalendarParticipantOptionViewModel> ParticipantOptions { get; }
+
+    public TeamCalendarViewModel(Guid teamId, string teamName, string timeZoneId, bool canCreateActivity, IReadOnlyCollection<ActivityCalendarParticipantOptionViewModel> participantOptions)
     {
+        ArgumentNullException.ThrowIfNull(participantOptions);
+
         TeamId = teamId;
         TeamName = teamName;
         TimeZoneId = timeZoneId;
         CanCreateActivity = canCreateActivity;
+        ParticipantOptions = participantOptions.ToArray();
     }
 }

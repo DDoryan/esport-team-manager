@@ -300,20 +300,127 @@ function synchronizeCalendarFilterInputs(filterInputs, changedInput)
     }
 }
 
-function applyInitialCalendarFilterSelection(filterInputs, isMobile)
+function synchronizeCalendarAdvancedFilterInputs(advancedFilterInputs, changedInput)
 {
-    const completedIsSelected = !isMobile;
-
-    for (const input of filterInputs)
+    for (const input of advancedFilterInputs)
     {
-        if (input.dataset.calendarFilterKind === "status" && input.value === "Completed")
+        if (input !== changedInput && input.dataset.calendarAdvancedFilter === changedInput.dataset.calendarAdvancedFilter)
         {
-            input.checked = completedIsSelected;
+            input.value = changedInput.value;
         }
     }
 }
 
-function updateCalendarActiveFilterCount(filterInputs, countElements)
+function getCalendarAdvancedFilterValue(advancedFilterInputs, name)
+{
+    const input = advancedFilterInputs.find(candidate => candidate.dataset.calendarAdvancedFilter === name);
+
+    return input?.value.trim() ?? "";
+}
+
+function resetCalendarFilters(filterInputs, advancedFilterInputs, isMobile)
+{
+    for (const input of filterInputs)
+    {
+        if (input.dataset.calendarFilterKind === "type")
+        {
+            input.checked = true;
+        }
+        else if (input.dataset.calendarFilterKind === "status")
+        {
+            input.checked = input.value === "Planned" || (!isMobile && input.value === "Completed");
+        }
+    }
+
+    for (const input of advancedFilterInputs)
+    {
+        input.value = "";
+    }
+}
+
+function saveCalendarFilters(storageKey, filterInputs, advancedFilterInputs)
+{
+    const storedFilters =
+    {
+        types: [...getSelectedCalendarFilterValues(filterInputs, "type")],
+        statuses: [...getSelectedCalendarFilterValues(filterInputs, "status")],
+        participant: getCalendarAdvancedFilterValue(advancedFilterInputs, "participant"),
+        result: getCalendarAdvancedFilterValue(advancedFilterInputs, "result"),
+        searchText: getCalendarAdvancedFilterValue(advancedFilterInputs, "searchText")
+    };
+
+    try
+    {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(storedFilters));
+    }
+    catch
+    {
+        // Le calendrier reste utilisable lorsque le stockage de session est indisponible.
+    }
+}
+
+function restoreCalendarFilters(storageKey, filterInputs, advancedFilterInputs)
+{
+    let storedFilters;
+
+    try
+    {
+        const serializedFilters = window.sessionStorage.getItem(storageKey);
+
+        if (serializedFilters === null)
+        {
+            return false;
+        }
+
+        storedFilters = JSON.parse(serializedFilters);
+    }
+    catch
+    {
+        return false;
+    }
+
+    if (storedFilters === null || typeof storedFilters !== "object")
+    {
+        return false;
+    }
+
+    if (Array.isArray(storedFilters.types))
+    {
+        for (const input of filterInputs.filter(candidate => candidate.dataset.calendarFilterKind === "type"))
+        {
+            input.checked = storedFilters.types.includes(input.value);
+        }
+    }
+
+    if (Array.isArray(storedFilters.statuses))
+    {
+        for (const input of filterInputs.filter(candidate => candidate.dataset.calendarFilterKind === "status"))
+        {
+            input.checked = storedFilters.statuses.includes(input.value);
+        }
+    }
+
+    const advancedValues =
+    {
+        participant: typeof storedFilters.participant === "string" ? storedFilters.participant : "",
+        result: typeof storedFilters.result === "string" ? storedFilters.result : "",
+        searchText: typeof storedFilters.searchText === "string" ? storedFilters.searchText : ""
+    };
+
+    for (const input of advancedFilterInputs)
+    {
+        const name = input.dataset.calendarAdvancedFilter;
+
+        if (name && Object.hasOwn(advancedValues, name))
+        {
+            input.value = advancedValues[name];
+        }
+    }
+
+    return true;
+}
+
+function updateCalendarActiveFilterCount(filterInputs, advancedFilterInputs, countElements)
 {
     const filters = new Map();
 
@@ -327,9 +434,13 @@ function updateCalendarActiveFilterCount(filterInputs, countElements)
         }
     }
 
-    const activeFilterCount = [...filters.values()]
+    const activeCheckboxFilterCount = [...filters.values()]
         .filter(input => input.checked)
         .length;
+    const activeAdvancedFilterCount = ["participant", "result", "searchText"]
+        .filter(name => getCalendarAdvancedFilterValue(advancedFilterInputs, name).length > 0)
+        .length;
+    const activeFilterCount = activeCheckboxFilterCount + activeAdvancedFilterCount;
 
     for (const countElement of countElements)
     {
@@ -337,14 +448,34 @@ function updateCalendarActiveFilterCount(filterInputs, countElements)
     }
 }
 
-async function loadCalendarEvents(eventsUrl, fetchInfo, filterInputs)
+async function loadCalendarEvents(eventsUrl, fetchInfo, filterInputs, advancedFilterInputs)
 {
+    const selectedTypes = getSelectedCalendarFilterValues(filterInputs, "type");
     const selectedStatuses = getSelectedCalendarFilterValues(filterInputs, "status");
+    const participant = getCalendarAdvancedFilterValue(advancedFilterInputs, "participant");
+    const result = getCalendarAdvancedFilterValue(advancedFilterInputs, "result");
+    const searchText = getCalendarAdvancedFilterValue(advancedFilterInputs, "searchText");
     const requestUrl = new URL(eventsUrl, window.location.origin);
 
     requestUrl.searchParams.set("start", fetchInfo.startStr);
     requestUrl.searchParams.set("end", fetchInfo.endStr);
-    requestUrl.searchParams.set("includeCancelled", selectedStatuses.has("Cancelled").toString());
+    requestUrl.searchParams.set("types", [...selectedTypes].join(","));
+    requestUrl.searchParams.set("statuses", [...selectedStatuses].join(","));
+
+    if (participant.length > 0)
+    {
+        requestUrl.searchParams.set("participant", participant);
+    }
+
+    if (result.length > 0)
+    {
+        requestUrl.searchParams.set("result", result);
+    }
+
+    if (searchText.length > 0)
+    {
+        requestUrl.searchParams.set("searchText", searchText);
+    }
 
     const response = await fetch(requestUrl,
     {
@@ -659,6 +790,8 @@ document.addEventListener("DOMContentLoaded", () =>
     const activityListLoadingElement = activityListElement?.querySelector(".team-activity-list-loading") ?? null;
     const activityListEmptyElement = activityListElement?.querySelector(".team-activity-list-empty") ?? null;
     const calendarFilterInputs = [...document.querySelectorAll("[data-calendar-filter-kind]")];
+    const calendarAdvancedFilterInputs = [...document.querySelectorAll("[data-calendar-advanced-filter]")];
+    const calendarFilterResetButtonElements = [...document.querySelectorAll("[data-calendar-filters-reset]")];
     const calendarActiveFilterCountElements = [...document.querySelectorAll("[data-calendar-active-filter-count]")];
     const mobilePreviousDayButtonElement = document.querySelector("[data-mobile-calendar-action='previous']");
     const mobileTodayButtonElement = document.querySelector("[data-mobile-calendar-action='today']");
@@ -681,9 +814,10 @@ document.addEventListener("DOMContentLoaded", () =>
     }
 
     const eventsUrl = calendarElement.dataset.eventsUrl;
+    const teamId = calendarElement.dataset.teamId;
     const teamTimeZone = calendarElement.dataset.teamTimeZone;
 
-    if (!eventsUrl || !teamTimeZone || datePickerElement === null || activityListElement === null || activityListItemsElement === null || activityListLoadingElement === null || activityListEmptyElement === null || mobilePreviousDayButtonElement === null || mobileTodayButtonElement === null || mobileNextDayButtonElement === null || mobileDatePickerButtonElement === null)
+    if (!eventsUrl || !teamId || !teamTimeZone || datePickerElement === null || activityListElement === null || activityListItemsElement === null || activityListLoadingElement === null || activityListEmptyElement === null || mobilePreviousDayButtonElement === null || mobileTodayButtonElement === null || mobileNextDayButtonElement === null || mobileDatePickerButtonElement === null)
     {
         if (loadErrorElement !== null)
         {
@@ -694,9 +828,11 @@ document.addEventListener("DOMContentLoaded", () =>
     }
 
     const mobileMediaQuery = window.matchMedia("(max-width: 575.98px)");
+    const filterStorageKey = `activity-calendar-filters:${teamId}`;
     let mobileCalendarEvents = [];
 
-    applyInitialCalendarFilterSelection(calendarFilterInputs, mobileMediaQuery.matches);
+    resetCalendarFilters(calendarFilterInputs, calendarAdvancedFilterInputs, mobileMediaQuery.matches);
+    restoreCalendarFilters(filterStorageKey, calendarFilterInputs, calendarAdvancedFilterInputs);
 
     const calendar = new FullCalendar.Calendar(calendarElement,
     {
@@ -846,7 +982,7 @@ document.addEventListener("DOMContentLoaded", () =>
         {
             try
             {
-                const events = await loadCalendarEvents(eventsUrl, fetchInfo, calendarFilterInputs);
+                const events = await loadCalendarEvents(eventsUrl, fetchInfo, calendarFilterInputs, calendarAdvancedFilterInputs);
 
                 successCallback(events);
             }
@@ -956,26 +1092,61 @@ document.addEventListener("DOMContentLoaded", () =>
         updateResponsiveCalendarView(calendar, mobileMediaQuery);
     });
 
-    mobileMediaQuery.addEventListener("change", event =>
+    mobileMediaQuery.addEventListener("change", () =>
     {
-        applyInitialCalendarFilterSelection(calendarFilterInputs, event.matches);
-        updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
-        calendar.refetchEvents();
         updateResponsiveCalendarView(calendar, mobileMediaQuery);
     });
+
+    const refreshCalendarFilters = () =>
+    {
+        saveCalendarFilters(filterStorageKey, calendarFilterInputs, calendarAdvancedFilterInputs);
+        updateCalendarActiveFilterCount(calendarFilterInputs, calendarAdvancedFilterInputs, calendarActiveFilterCountElements);
+        calendar.refetchEvents();
+    };
 
     for (const filterInput of calendarFilterInputs)
     {
         filterInput.addEventListener("change", () =>
         {
             synchronizeCalendarFilterInputs(calendarFilterInputs, filterInput);
-            updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
-            calendar.refetchEvents();
+            refreshCalendarFilters();
+        });
+    }
+
+    let searchRefreshTimeoutId = null;
+
+    for (const advancedFilterInput of calendarAdvancedFilterInputs)
+    {
+        const eventName = advancedFilterInput.dataset.calendarAdvancedFilter === "searchText" ? "input" : "change";
+
+        advancedFilterInput.addEventListener(eventName, () =>
+        {
+            synchronizeCalendarAdvancedFilterInputs(calendarAdvancedFilterInputs, advancedFilterInput);
+
+            if (advancedFilterInput.dataset.calendarAdvancedFilter === "searchText")
+            {
+                window.clearTimeout(searchRefreshTimeoutId);
+                searchRefreshTimeoutId = window.setTimeout(refreshCalendarFilters, 300);
+
+                return;
+            }
+
+            refreshCalendarFilters();
+        });
+    }
+
+    for (const resetButtonElement of calendarFilterResetButtonElements)
+    {
+        resetButtonElement.addEventListener("click", () =>
+        {
+            window.clearTimeout(searchRefreshTimeoutId);
+            resetCalendarFilters(calendarFilterInputs, calendarAdvancedFilterInputs, mobileMediaQuery.matches);
+            refreshCalendarFilters();
         });
     }
 
     calendar.render();
-    updateCalendarActiveFilterCount(calendarFilterInputs, calendarActiveFilterCountElements);
+    updateCalendarActiveFilterCount(calendarFilterInputs, calendarAdvancedFilterInputs, calendarActiveFilterCountElements);
     updateResponsiveCalendarView(calendar, mobileMediaQuery);
     updateSelectedDateButton(calendarElement, datePickerElement, calendar.getDate(), teamTimeZone);
     updateViewButtons(calendarElement, calendar.view.type);

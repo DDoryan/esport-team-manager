@@ -12,6 +12,21 @@ namespace RepriseWeb.Controllers;
 public class ActivitiesController : Controller
 {
     private const int MaximumPeriodLengthInDays = 29;
+    private const int MaximumSearchTextLength = 100;
+
+    private static readonly string[] DefaultActivityTypeCodes =
+    [
+        "Pracc",
+    "OfficialMatch",
+    "Meeting",
+    "VodReview"
+    ];
+
+    private static readonly ActivityStatus[] DefaultActivityStatuses =
+    [
+        ActivityStatus.Planned,
+    ActivityStatus.Completed
+    ];
 
     private readonly IActivityCalendarService _activityCalendarService;
     private readonly IActivityCreationService _activityCreationService;
@@ -49,7 +64,17 @@ public class ActivitiesController : Controller
         }
 
         bool canCreateActivity = await _activityCreationService.CanCreateAsync(currentUserId.Value, teamId, cancellationToken);
-        TeamCalendarViewModel viewModel = new(currentTeam.TeamId, currentTeam.Name, currentTeam.TimeZoneId, canCreateActivity);
+        IReadOnlyCollection<ActivityCalendarParticipantOption> participantOptions = await _activityCalendarService.GetParticipantOptionsAsync(teamId, cancellationToken);
+
+        IReadOnlyCollection<ActivityCalendarParticipantOptionViewModel> participantOptionViewModels = participantOptions
+            .Select(option => new ActivityCalendarParticipantOptionViewModel(
+                option.UserId.HasValue
+                    ? $"user:{option.UserId.Value:D}"
+                    : $"former:{option.FormerMemberId.GetValueOrDefault():D}",
+                option.DisplayName))
+            .ToArray();
+
+        TeamCalendarViewModel viewModel = new(currentTeam.TeamId, currentTeam.Name, currentTeam.TimeZoneId, canCreateActivity, participantOptionViewModels);
 
         return View(viewModel);
     }
@@ -335,7 +360,7 @@ public class ActivitiesController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Events(Guid teamId, DateTimeOffset? start, DateTimeOffset? end, bool includeCancelled = false, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Events(Guid teamId, DateTimeOffset? start, DateTimeOffset? end, string? types = null, string? statuses = null, string? participant = null, MatchResult? result = null, string? searchText = null, CancellationToken cancellationToken = default)
     {
         Guid? currentUserId = GetCurrentUserId();
 
@@ -356,7 +381,12 @@ public class ActivitiesController : Controller
             return Forbid();
         }
 
-        if (!start.HasValue || !end.HasValue)
+        if (!start.HasValue || !end.HasValue || !ModelState.IsValid)
+        {
+            return BadRequest();
+        }
+
+        if (searchText is not null && searchText.Trim().Length > MaximumSearchTextLength)
         {
             return BadRequest();
         }
@@ -369,7 +399,21 @@ public class ActivitiesController : Controller
             return BadRequest();
         }
 
-        IReadOnlyCollection<CalendarActivitySummary> activities = await _activityCalendarService.GetForPeriodAsync(teamId, normalizedStart, normalizedEnd, includeCancelled, cancellationToken);
+        IReadOnlyCollection<string> selectedTypeCodes = ParseActivityTypeCodes(types);
+
+        if (!TryParseActivityStatuses(statuses, out IReadOnlyCollection<ActivityStatus> selectedStatuses))
+        {
+            return BadRequest();
+        }
+
+        if (!TryParseParticipantFilter(participant, out Guid? participantUserId, out Guid? formerMemberId))
+        {
+            return BadRequest();
+        }
+
+        ActivityCalendarFilter filter = new(selectedTypeCodes, selectedStatuses, participantUserId, formerMemberId, result, searchText);
+
+        IReadOnlyCollection<CalendarActivitySummary> activities = await _activityCalendarService.GetForPeriodAsync(teamId, normalizedStart, normalizedEnd, filter, cancellationToken);
         IReadOnlyCollection<ActivityCalendarEventViewModel> events = activities
             .Select(activity => new ActivityCalendarEventViewModel(
                 activity.ActivityId,
@@ -385,6 +429,84 @@ public class ActivitiesController : Controller
             .ToArray();
 
         return Json(events);
+    }
+
+    private static bool TryParseParticipantFilter(string? participant, out Guid? userId, out Guid? formerMemberId)
+{
+    userId = null;
+    formerMemberId = null;
+
+    if (string.IsNullOrWhiteSpace(participant))
+    {
+        return true;
+    }
+
+    string[] parts = participant.Split(':', 2, StringSplitOptions.TrimEntries);
+
+    if (parts.Length != 2 || !Guid.TryParse(parts[1], out Guid identifier) || identifier == Guid.Empty)
+    {
+        return false;
+    }
+
+    if (string.Equals(parts[0], "user", StringComparison.OrdinalIgnoreCase))
+    {
+        userId = identifier;
+
+        return true;
+    }
+
+    if (string.Equals(parts[0], "former", StringComparison.OrdinalIgnoreCase))
+    {
+        formerMemberId = identifier;
+
+        return true;
+    }
+
+    return false;
+}
+
+    private static IReadOnlyCollection<string> ParseActivityTypeCodes(string? types)
+    {
+        if (types is null)
+        {
+            return DefaultActivityTypeCodes.ToArray();
+        }
+
+        return types
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool TryParseActivityStatuses(string? statuses, out IReadOnlyCollection<ActivityStatus> parsedStatuses)
+    {
+        if (statuses is null)
+        {
+            parsedStatuses = DefaultActivityStatuses.ToArray();
+
+            return true;
+        }
+
+        string[] statusValues = statuses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        List<ActivityStatus> results = [];
+
+        foreach (string statusValue in statusValues)
+        {
+            if (!Enum.TryParse(statusValue, true, out ActivityStatus status) || !Enum.IsDefined(typeof(ActivityStatus), status))
+            {
+                parsedStatuses = Array.Empty<ActivityStatus>();
+
+                return false;
+            }
+
+            results.Add(status);
+        }
+
+        parsedStatuses = results
+            .Distinct()
+            .ToArray();
+
+        return true;
     }
 
     private async Task<UserTeamSummary?> FindCurrentTeamAsync(Guid userId, Guid teamId, CancellationToken cancellationToken)
