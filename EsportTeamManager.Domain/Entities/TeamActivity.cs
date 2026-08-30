@@ -90,8 +90,6 @@ public class TeamActivity
 
     public void ChangeType(ActivityType activityType, DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
-
         if (activityType is null)
         {
             throw new DomainException("The activity type is required.");
@@ -122,28 +120,24 @@ public class TeamActivity
 
     public void UpdateTexts(string? subtitle, string? description, string? report, DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
         SetTexts(subtitle, description, report);
         Touch(updatedAtUtc);
     }
 
     public void Reschedule(DateTimeOffset plannedStartUtc, DateTimeOffset plannedEndUtc, string timeZoneId, DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
         SetSchedule(plannedStartUtc, plannedEndUtc, timeZoneId);
         Touch(updatedAtUtc);
     }
 
     public void ReplaceParticipants(IEnumerable<Guid> participantMembershipIds, DateTimeOffset updatedAtUtc, IReadOnlyDictionary<Guid, Attendance>? attendanceByMembershipId = null)
     {
-        EnsureNotCancelled();
         ReplaceParticipantList(participantMembershipIds, attendanceByMembershipId);
         Touch(updatedAtUtc);
     }
 
     public void UpdateOpponent(string? opponentName, DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
         EnsureMatchActivity();
         MatchDetail!.UpdateOpponent(opponentName);
         Touch(updatedAtUtc);
@@ -151,7 +145,6 @@ public class TeamActivity
 
     public void SetScores(int teamScore, int opponentScore, DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
         EnsureMatchActivity();
         MatchDetail!.SetScores(teamScore, opponentScore);
         Touch(updatedAtUtc);
@@ -159,7 +152,6 @@ public class TeamActivity
 
     public void ClearScores(DateTimeOffset updatedAtUtc)
     {
-        EnsureNotCancelled();
         EnsureMatchActivity();
 
         if (Status == ActivityStatus.Completed)
@@ -171,6 +163,61 @@ public class TeamActivity
         Touch(updatedAtUtc);
     }
 
+    public void ChangeStatus(ActivityStatus status, IReadOnlyDictionary<Guid, Attendance>? attendanceByMembershipId, string? cancellationReason, bool departureConfirmed, DateTimeOffset changedAtUtc)
+    {
+        if (!Enum.IsDefined(typeof(ActivityStatus), status))
+        {
+            throw new DomainException("The activity status is invalid.");
+        }
+
+        bool departureRequiresConfirmation = Status != status && (Status is ActivityStatus.Completed or ActivityStatus.Cancelled);
+
+        if (departureRequiresConfirmation && !departureConfirmed)
+        {
+            throw new DomainException("Leaving a completed or cancelled activity requires confirmation.");
+        }
+
+        if (status != ActivityStatus.Completed && attendanceByMembershipId is not null)
+        {
+            throw new DomainException("Attendance can only be supplied when completing an activity.");
+        }
+
+        switch (status)
+        {
+            case ActivityStatus.Planned:
+                Status = ActivityStatus.Planned;
+                CancellationReason = null;
+                break;
+
+            case ActivityStatus.Completed:
+                ValidateAttendances(attendanceByMembershipId);
+
+                if (RequiresScores)
+                {
+                    MatchDetail!.EnsureReadyForCompletion();
+                }
+
+                ApplyAttendances(attendanceByMembershipId!);
+                Status = ActivityStatus.Completed;
+                CancellationReason = null;
+                break;
+
+            case ActivityStatus.Cancelled:
+                string? normalizedReason = NormalizeOptionalText(cancellationReason);
+
+                if (normalizedReason is not null && normalizedReason.Length > 500)
+                {
+                    throw new DomainException("The cancellation reason cannot exceed 500 characters.");
+                }
+
+                Status = ActivityStatus.Cancelled;
+                CancellationReason = normalizedReason;
+                break;
+        }
+
+        Touch(changedAtUtc);
+    }
+
     public void Complete(IReadOnlyDictionary<Guid, Attendance> attendanceByMembershipId, DateTimeOffset completedAtUtc)
     {
         if (Status != ActivityStatus.Planned)
@@ -178,18 +225,7 @@ public class TeamActivity
             throw new DomainException("Only a planned activity can be completed.");
         }
 
-        ValidateAttendances(attendanceByMembershipId);
-
-        if (RequiresScores)
-        {
-            MatchDetail!.EnsureReadyForCompletion();
-        }
-
-        ApplyAttendances(attendanceByMembershipId);
-
-        Status = ActivityStatus.Completed;
-        CancellationReason = null;
-        Touch(completedAtUtc);
+        ChangeStatus(ActivityStatus.Completed, attendanceByMembershipId, null, false, completedAtUtc);
     }
 
     public void UpdateAttendances(IReadOnlyDictionary<Guid, Attendance> attendanceByMembershipId, DateTimeOffset updatedAtUtc)
@@ -229,16 +265,7 @@ public class TeamActivity
             throw new DomainException("Only a planned activity can be cancelled.");
         }
 
-        string? normalizedReason = NormalizeOptionalText(cancellationReason);
-
-        if (normalizedReason is not null && normalizedReason.Length > 500)
-        {
-            throw new DomainException("The cancellation reason cannot exceed 500 characters.");
-        }
-
-        Status = ActivityStatus.Cancelled;
-        CancellationReason = normalizedReason;
-        Touch(cancelledAtUtc);
+        ChangeStatus(ActivityStatus.Cancelled, null, cancellationReason, false, cancelledAtUtc);
     }
 
     private void SetSchedule(DateTimeOffset plannedStartUtc, DateTimeOffset plannedEndUtc, string timeZoneId)
@@ -331,13 +358,9 @@ public class TeamActivity
             }
         }
 
-        foreach (ActivityParticipant participant in _participants)
+        if (attendanceByMembershipId is not null)
         {
-            if (attendanceByMembershipId is null)
-            {
-                participant.ClearAttendance();
-            }
-            else
+            foreach (ActivityParticipant participant in _participants)
             {
                 participant.MarkAttendance(attendanceByMembershipId[participant.TeamMembershipId]);
             }
@@ -378,14 +401,6 @@ public class TeamActivity
         if (!RequiresScores || MatchDetail is null)
         {
             throw new DomainException("Match information is only available for a pracc or an official match.");
-        }
-    }
-
-    private void EnsureNotCancelled()
-    {
-        if (Status == ActivityStatus.Cancelled)
-        {
-            throw new DomainException("A cancelled activity cannot be modified.");
         }
     }
 

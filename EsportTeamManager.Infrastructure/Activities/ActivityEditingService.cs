@@ -101,8 +101,8 @@ public sealed class ActivityEditingService : IActivityEditingService
             .ToDictionaryAsync(participant => participant.TeamMembershipId, participant => participant.Attendance, cancellationToken);
 
         Guid[] existingParticipantIdentifiers = existingParticipants.Keys.ToArray();
-        bool canEdit = activity.Status != ActivityStatus.Cancelled && (access.OwnerUserId == userId || access.RoleCode == ManagerRoleCode || access.RoleCode == CoachRoleCode);
-        bool includeMembershipOptions = canEdit && activity.Status is ActivityStatus.Planned or ActivityStatus.Completed;
+        bool canEdit = access.OwnerUserId == userId || access.RoleCode == ManagerRoleCode || access.RoleCode == CoachRoleCode;
+        bool includeMembershipOptions = canEdit;
         DateTimeOffset plannedStartUtc = activity.PlannedStartUtc;
 
         List<TeamMembership> teamMembershipCandidates = await _context.TeamMemberships
@@ -263,6 +263,20 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure(["L’activité est introuvable."]);
         }
 
+        ActivityStatus requestedStatus = request.Status ?? activity.Status;
+
+        if (!Enum.IsDefined(typeof(ActivityStatus), requestedStatus))
+        {
+            return UpdateActivityResult.Failure(["L’état demandé n’est pas valide."]);
+        }
+
+        bool departureRequiresConfirmation = activity.Status != requestedStatus && (activity.Status is ActivityStatus.Completed or ActivityStatus.Cancelled);
+
+        if (departureRequiresConfirmation && !request.StatusChangeConfirmed)
+        {
+            return UpdateActivityResult.Failure(["Confirmez le changement depuis une activité terminée ou annulée."]);
+        }
+
         ActivityType? activityType = await _context.ActivityTypes
             .SingleOrDefaultAsync(item => item.ActivityTypeId == request.ActivityTypeId && (item.IsSystem || item.TeamId == request.TeamId), cancellationToken);
 
@@ -290,7 +304,7 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure(["Les scores ne peuvent pas être négatifs."]);
         }
 
-        if (activityTypeRequiresScores && activity.Status == ActivityStatus.Completed && !teamScoreIsProvided)
+        if (activityTypeRequiresScores && requestedStatus == ActivityStatus.Completed && !teamScoreIsProvided)
         {
             return UpdateActivityResult.Failure(["Les deux scores sont obligatoires pour une activité terminée."]);
         }
@@ -338,12 +352,30 @@ public sealed class ActivityEditingService : IActivityEditingService
 
         DateTimeOffset updatedAtUtc = _timeProvider.GetUtcNow();
 
-        string? participantUpdateError = await UpdateParticipantsAsync(activity, request.TeamId, request.Participants, plannedStartUtc, updatedAtUtc, cancellationToken);
+        if (requestedStatus != ActivityStatus.Completed && activity.Status != requestedStatus)
+        {
+            try
+            {
+                activity.ChangeStatus(requestedStatus, null, request.CancellationReason, request.StatusChangeConfirmed, updatedAtUtc);
+            }
+            catch (DomainException)
+            {
+                return UpdateActivityResult.Failure(["Les informations fournies ne permettent pas de changer l’état de l’activité."]);
+            }
+        }
+
+        string? participantUpdateError = await UpdateParticipantsAsync(activity, request.TeamId, request.Participants, requestedStatus, plannedStartUtc, updatedAtUtc, cancellationToken);
 
         if (participantUpdateError is not null)
         {
             return UpdateActivityResult.Failure([participantUpdateError]);
         }
+
+        IReadOnlyDictionary<Guid, Attendance>? attendanceByMembershipId = requestedStatus == ActivityStatus.Completed
+            ? request.Participants
+                .Where(participant => participant.IsSelected)
+                .ToDictionary(participant => participant.TeamMembershipId, participant => participant.Attendance!.Value)
+            : null;
 
         string? linkSynchronizationError = await SynchronizeLinksAsync(request.ActivityId, request.Links, cancellationToken);
 
@@ -373,6 +405,8 @@ public sealed class ActivityEditingService : IActivityEditingService
                     activity.ClearScores(updatedAtUtc);
                 }
             }
+
+            activity.ChangeStatus(requestedStatus, attendanceByMembershipId, request.CancellationReason, request.StatusChangeConfirmed, updatedAtUtc);
 
             if (previousMatchDetail is not null && activity.MatchDetail is null)
             {
@@ -406,7 +440,7 @@ public sealed class ActivityEditingService : IActivityEditingService
         return UpdateActivityResult.Success();
     }
 
-    private async Task<string?> UpdateParticipantsAsync(TeamActivity activity, Guid teamId, IReadOnlyCollection<UpdateActivityParticipantRequest> requestedParticipants, DateTimeOffset plannedStartUtc, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken)
+    private async Task<string?> UpdateParticipantsAsync(TeamActivity activity, Guid teamId, IReadOnlyCollection<UpdateActivityParticipantRequest> requestedParticipants, ActivityStatus requestedStatus, DateTimeOffset plannedStartUtc, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken)
     {
         if (requestedParticipants.Count == 0)
         {
@@ -423,11 +457,6 @@ public sealed class ActivityEditingService : IActivityEditingService
             {
                 return "La demande contient un identifiant de participant invalide ou répété.";
             }
-        }
-
-        if (activity.Status == ActivityStatus.Cancelled)
-        {
-            return "Les participants d’une activité annulée ne peuvent pas être modifiés.";
         }
 
         UpdateActivityParticipantRequest[] selectedParticipants = requestedParticipants
@@ -447,11 +476,11 @@ public sealed class ActivityEditingService : IActivityEditingService
             .Select(participant => participant.TeamMembershipId)
             .ToHashSet();
 
-        if (activity.Status == ActivityStatus.Planned)
+        if (requestedStatus != ActivityStatus.Completed)
         {
             if (requestedParticipants.Any(participant => participant.Attendance.HasValue))
             {
-                return "Une activité planifiée ne peut pas contenir de présence.";
+                return "Une activité planifiée ou annulée ne peut pas appliquer de présence.";
             }
 
             HashSet<Guid> activeMembershipIdentifiers = await _context.TeamMemberships
@@ -509,7 +538,14 @@ public sealed class ActivityEditingService : IActivityEditingService
 
         try
         {
-            activity.ReplaceParticipants(selectedIdentifiers, updatedAtUtc, attendanceByMembershipId);
+            if (activity.Status == ActivityStatus.Completed)
+            {
+                activity.ReplaceParticipants(selectedIdentifiers, updatedAtUtc, attendanceByMembershipId);
+            }
+            else
+            {
+                activity.ReplaceParticipants(selectedIdentifiers, updatedAtUtc);
+            }
         }
         catch (DomainException)
         {

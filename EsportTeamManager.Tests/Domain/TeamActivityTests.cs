@@ -289,19 +289,150 @@ namespace EsportTeamManager.Tests.Domain
         }
 
         [Fact]
-        public void Cancel_PlannedActivity_PreventsFurtherModification()
+        public void CancelledActivity_UpdateTexts_PreservesCancelledStatusAndReason()
         {
             DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
-            DateTimeOffset startUtc = createdAtUtc.AddHours(1);
-            ActivityType activityType = new ActivityType(4, "ReviewVod", "Review VOD", true);
-            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), startUtc, startUtc.AddHours(1), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
 
-            activity.Cancel("Unavailable players", createdAtUtc.AddMinutes(10));
-            DomainException exception = Assert.Throws<DomainException>(() => activity.UpdateTexts("Updated subtitle", null, null, createdAtUtc.AddMinutes(20)));
+            activity.Cancel("Players unavailable", createdAtUtc.AddMinutes(10));
+            activity.UpdateTexts("Updated subtitle", "Updated description", "Updated report", createdAtUtc.AddMinutes(20));
 
             Assert.Equal(ActivityStatus.Cancelled, activity.Status);
-            Assert.Equal("Unavailable players", activity.CancellationReason);
-            Assert.Equal("A cancelled activity cannot be modified.", exception.Message);
+            Assert.Equal("Players unavailable", activity.CancellationReason);
+            Assert.Equal("Updated subtitle", activity.Subtitle);
+            Assert.Equal("Updated description", activity.Description);
+            Assert.Equal("Updated report", activity.Report);
+        }
+
+        [Fact]
+        public void ChangeStatus_CompletedToPlannedWithoutConfirmation_ThrowsWithoutChangingData()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid participantMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc, report: "Completed report");
+            DateTimeOffset completedAtUtc = createdAtUtc.AddHours(2);
+
+            activity.Complete(
+                new Dictionary<Guid, Attendance>
+                {
+                    [participantMembershipId] = Attendance.Present
+                },
+                completedAtUtc);
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.ChangeStatus(ActivityStatus.Planned, null, null, false, completedAtUtc.AddMinutes(30)));
+
+            Assert.Equal("Leaving a completed or cancelled activity requires confirmation.", exception.Message);
+            Assert.Equal(ActivityStatus.Completed, activity.Status);
+            Assert.Equal(Attendance.Present, Assert.Single(activity.Participants).Attendance);
+            Assert.Equal("Completed report", activity.Report);
+            Assert.Equal(completedAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void ChangeStatus_CompletedToCancelledWithConfirmation_PreservesAttendanceAndReport()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid participantMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc, report: "Completed report");
+
+            activity.Complete(
+                new Dictionary<Guid, Attendance>
+                {
+                    [participantMembershipId] = Attendance.Present
+                },
+                createdAtUtc.AddHours(2));
+
+            DateTimeOffset cancelledAtUtc = createdAtUtc.AddHours(3);
+
+            activity.ChangeStatus(ActivityStatus.Cancelled, null, "  Schedule changed  ", true, cancelledAtUtc);
+
+            Assert.Equal(ActivityStatus.Cancelled, activity.Status);
+            Assert.Equal("Schedule changed", activity.CancellationReason);
+            Assert.Equal(Attendance.Present, Assert.Single(activity.Participants).Attendance);
+            Assert.Equal("Completed report", activity.Report);
+            Assert.Equal(cancelledAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void ChangeStatus_CancelledToPlannedWithConfirmation_PreservesMatchData()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            ActivityType activityType = new ActivityType(1, "Pracc", "Pracc", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+
+            activity.UpdateOpponent("Navi", createdAtUtc.AddMinutes(5));
+            activity.SetScores(13, 8, createdAtUtc.AddMinutes(10));
+            activity.Cancel("Cancelled", createdAtUtc.AddMinutes(15));
+
+            activity.ChangeStatus(ActivityStatus.Planned, null, null, true, createdAtUtc.AddMinutes(20));
+
+            Assert.Equal(ActivityStatus.Planned, activity.Status);
+            Assert.Null(activity.CancellationReason);
+            Assert.Equal("Navi", activity.MatchDetail!.OpponentName);
+            Assert.Equal(13, activity.MatchDetail.TeamScore);
+            Assert.Equal(8, activity.MatchDetail.OpponentScore);
+        }
+
+        [Fact]
+        public void ChangeStatus_CancelledToCompletedWithConfirmation_AppliesAttendanceAndKeepsMatchData()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid participantMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(1, "Pracc", "Pracc", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc);
+
+            activity.UpdateOpponent("Navi", createdAtUtc.AddMinutes(5));
+            activity.SetScores(13, 8, createdAtUtc.AddMinutes(10));
+            activity.Cancel("Initially cancelled", createdAtUtc.AddMinutes(15));
+
+            activity.ChangeStatus(
+                ActivityStatus.Completed,
+                new Dictionary<Guid, Attendance>
+                {
+                    [participantMembershipId] = Attendance.Present
+                },
+                null,
+                true,
+                createdAtUtc.AddMinutes(20));
+
+            Assert.Equal(ActivityStatus.Completed, activity.Status);
+            Assert.Null(activity.CancellationReason);
+            Assert.Equal(Attendance.Present, Assert.Single(activity.Participants).Attendance);
+            Assert.Equal(13, activity.MatchDetail!.TeamScore);
+            Assert.Equal(8, activity.MatchDetail.OpponentScore);
+        }
+
+        [Fact]
+        public void ChangeStatus_ToCompletedWithoutAttendance_ThrowsWithoutChangingStatus()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.ChangeStatus(ActivityStatus.Completed, null, null, false, createdAtUtc.AddHours(2)));
+
+            Assert.Equal("Attendance must be provided for every activity participant.", exception.Message);
+            Assert.Equal(ActivityStatus.Planned, activity.Status);
+            Assert.Null(Assert.Single(activity.Participants).Attendance);
+            Assert.Equal(createdAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void ChangeStatus_ToCancelledWithTooLongReason_ThrowsWithoutChangingStatus()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [Guid.NewGuid()], createdAtUtc);
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.ChangeStatus(ActivityStatus.Cancelled, null, new string('a', 501), false, createdAtUtc.AddMinutes(10)));
+
+            Assert.Equal("The cancellation reason cannot exceed 500 characters.", exception.Message);
+            Assert.Equal(ActivityStatus.Planned, activity.Status);
+            Assert.Null(activity.CancellationReason);
+            Assert.Equal(createdAtUtc, activity.UpdatedAtUtc);
         }
     }
 }

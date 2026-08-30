@@ -8,7 +8,11 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
     const activityOpponentInput = activityEditForm.querySelector("[data-activity-opponent-input]");
     const activityScoreInputs = activityEditForm.querySelectorAll("[data-activity-score-input]");
     const activityResultLabel = activityEditForm.querySelector("[data-activity-result-label]");
-    const activityIsCompleted = activityEditForm.dataset.activityIsCompleted === "true";
+    const activityStatusInputs = activityEditForm.querySelectorAll("[data-activity-status-input]");
+    const activityStatusConfirmationInput = activityEditForm.querySelector("[data-activity-status-confirmation]");
+    const activityCancellationInput = activityEditForm.querySelector("[data-activity-cancellation-input]");
+    const activityAttendanceControls = activityEditForm.querySelectorAll("[data-activity-attendance-control]");
+    const originalActivityStatus = activityEditForm.dataset.originalActivityStatus ?? "";
     const activityAddLinkButton = activityEditForm.querySelector("[data-add-activity-link]");
     const activityLinkList = activityEditForm.querySelector("[data-activity-link-list]");
     const activityLinkTemplate = document.getElementById("activity-edit-link-template");
@@ -21,6 +25,82 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
     function createFormSnapshot()
     {
         return new URLSearchParams(new FormData(activityEditForm)).toString();
+    }
+
+    function getSelectedActivityStatus()
+    {
+        for (const activityStatusInput of activityStatusInputs)
+        {
+            if (activityStatusInput instanceof HTMLInputElement && activityStatusInput.checked)
+            {
+                return activityStatusInput.value;
+            }
+        }
+
+        return originalActivityStatus;
+    }
+
+    function getActivityStatusLabel(activityStatus)
+    {
+        switch (activityStatus)
+        {
+            case "Planned":
+                return "planifiée";
+
+            case "Completed":
+                return "terminée";
+
+            case "Cancelled":
+                return "annulée";
+
+            default:
+                return activityStatus;
+        }
+    }
+
+    function statusChangeRequiresConfirmation()
+    {
+        const selectedActivityStatus = getSelectedActivityStatus();
+        const originalStatusIsFinal = originalActivityStatus === "Completed" || originalActivityStatus === "Cancelled";
+
+        return originalStatusIsFinal && selectedActivityStatus !== originalActivityStatus;
+    }
+
+    function updateActivityStatusFields()
+    {
+        const selectedActivityStatus = getSelectedActivityStatus();
+        const activityIsCompleted = selectedActivityStatus === "Completed";
+        const activityIsCancelled = selectedActivityStatus === "Cancelled";
+
+        if (activityCancellationInput instanceof HTMLInputElement)
+        {
+            activityCancellationInput.disabled = !activityIsCancelled;
+        }
+
+        if (activityCancellationInput instanceof HTMLTextAreaElement)
+        {
+            activityCancellationInput.disabled = !activityIsCancelled;
+        }
+
+        for (const activityAttendanceControl of activityAttendanceControls)
+        {
+            if (activityAttendanceControl instanceof HTMLElement)
+            {
+                activityAttendanceControl.hidden = !activityIsCompleted;
+            }
+        }
+
+        if (activityAttendanceSelectAll instanceof HTMLInputElement)
+        {
+            activityAttendanceSelectAll.disabled = !activityIsCompleted;
+        }
+
+        for (const participantCheckbox of activityParticipantCheckboxes)
+        {
+            updateActivityAttendanceAvailability(participantCheckbox);
+        }
+
+        updateMatchSectionVisibility();
     }
 
     function updateMatchSectionVisibility()
@@ -56,7 +136,9 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
         {
             if (scoreInput instanceof HTMLInputElement)
             {
-                scoreInput.required = matchSectionIsVisible && (activityIsCompleted || oneScoreIsProvided);
+                const selectedActivityIsCompleted = getSelectedActivityStatus() === "Completed";
+
+                scoreInput.required = matchSectionIsVisible && (selectedActivityIsCompleted || oneScoreIsProvided);
             }
         }
 
@@ -145,7 +227,9 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
             return;
         }
 
-        attendanceCheckbox.disabled = !participantCheckbox.checked;
+        const selectedActivityIsCompleted = getSelectedActivityStatus() === "Completed";
+
+        attendanceCheckbox.disabled = !selectedActivityIsCompleted || !participantCheckbox.checked;
     }
 
     function configureActivityToggleAll(toggleAllCheckbox, individualCheckboxes, afterIndividualChange = null)
@@ -289,7 +373,7 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
     configureActivityToggleAll(activityParticipantSelectAll, activityParticipantCheckboxes, updateActivityAttendanceAvailability);
     configureActivityToggleAll(activityAttendanceSelectAll, activityAttendanceCheckboxes);
 
-    updateMatchSectionVisibility();
+    updateActivityStatusFields();
     focusFirstInvalidField();
 
     let nextActivityLinkIndex = initializeActivityLinkRows();
@@ -332,19 +416,59 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
 
     const initialFormSnapshot = createFormSnapshot();
 
+    for (const activityStatusInput of activityStatusInputs)
+    {
+        if (!(activityStatusInput instanceof HTMLInputElement))
+        {
+            continue;
+        }
+
+        activityStatusInput.addEventListener("change", () =>
+        {
+            if (activityStatusConfirmationInput instanceof HTMLInputElement)
+            {
+                activityStatusConfirmationInput.value = "false";
+            }
+
+            updateActivityStatusFields();
+        });
+    }
+
     if (activityTypeSelect !== null)
     {
         activityTypeSelect.addEventListener("change", updateMatchSectionVisibility);
     }
 
-    activityEditForm.addEventListener("submit", () =>
+    activityEditForm.addEventListener("submit", event =>
     {
+        updateActivityStatusFields();
+
         if (!formPassesClientValidation())
         {
+            event.preventDefault();
             formIsSubmitting = false;
             window.setTimeout(focusFirstInvalidField, 0);
 
             return;
+        }
+
+        if (statusChangeRequiresConfirmation())
+        {
+            const selectedActivityStatus = getSelectedActivityStatus();
+            const confirmationMessage = `Cette activité est actuellement ${getActivityStatusLabel(originalActivityStatus)}. Confirmer son passage vers l’état ${getActivityStatusLabel(selectedActivityStatus)} ?`;
+
+            if (!window.confirm(confirmationMessage))
+            {
+                event.preventDefault();
+                formIsSubmitting = false;
+
+                return;
+            }
+
+            if (activityStatusConfirmationInput instanceof HTMLInputElement)
+            {
+                activityStatusConfirmationInput.value = "true";
+            }
         }
 
         formIsSubmitting = true;
