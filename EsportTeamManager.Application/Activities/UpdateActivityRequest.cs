@@ -1,4 +1,6 @@
-﻿namespace EsportTeamManager.Application.Activities;
+﻿using EsportTeamManager.Domain.Enums;
+
+namespace EsportTeamManager.Application.Activities;
 
 public sealed class UpdateActivityRequest
 {
@@ -30,7 +32,13 @@ public sealed class UpdateActivityRequest
 
     public int? OpponentScore { get; }
 
-    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links, string? opponentName = null, int? teamScore = null, int? opponentScore = null)
+    public ActivityStatus? Status { get; }
+
+    public string? CancellationReason { get; }
+
+    public bool StatusChangeConfirmed { get; }
+
+    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links, string? opponentName = null, int? teamScore = null, int? opponentScore = null, ActivityStatus? status = null, string? cancellationReason = null, bool statusChangeConfirmed = false)
     {
         ArgumentNullException.ThrowIfNull(participants);
         ArgumentNullException.ThrowIfNull(links);
@@ -49,5 +57,8 @@ public sealed class UpdateActivityRequest
         OpponentName = opponentName;
         TeamScore = teamScore;
         OpponentScore = opponentScore;
+        Status = status;
+        CancellationReason = cancellationReason;
+        StatusChangeConfirmed = statusChangeConfirmed;
     }
 }

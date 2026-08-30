@@ -7,13 +7,6 @@
     ViewData["Title"] = activityTitle;
     ViewData["HtmlClass"] = "activity-edit-fixed-page app-local-scroll-page";
     bool matchSectionIsVisible = Model.TypeCode is "Pracc" or "OfficialMatch";
-    string statusClass = Model.StatusLabel switch
-    {
-        "Planifiée" => "activity-status-planned",
-        "Terminée" => "activity-status-completed",
-        "Annulée" => "activity-status-cancelled",
-        _ => string.Empty
-    };
 
     string resultLabel = Model.Result switch
     {
@@ -51,9 +44,13 @@
           asp-action="Edit"
           method="post"
           data-can-edit="@Model.CanEdit.ToString().ToLowerInvariant()"
-          data-activity-is-completed="@((Model.Status == ActivityStatus.Completed).ToString().ToLowerInvariant())">
+          data-original-activity-status="@Model.OriginalStatus">
         <input asp-for="TeamId" type="hidden" />
         <input asp-for="ActivityId" type="hidden" />
+        <input asp-for="OriginalStatus" type="hidden" />
+        <input asp-for="StatusChangeConfirmed"
+               type="hidden"
+               data-activity-status-confirmation />
 
         <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
@@ -62,15 +59,61 @@
                 <h2 id="activity-state-title" class="activity-edit-section-title">État</h2>
 
                 <div class="activity-edit-state-content">
-                    <span class="activity-status-badge @statusClass">@Model.StatusLabel</span>
+                    <fieldset class="activity-edit-status-options">
+                        <legend class="visually-hidden">État de l’activité</legend>
 
-                    @if (Model.StatusLabel == "Annulée")
-                    {
-                        <div class="activity-edit-readonly-field">
-                            <span class="activity-edit-field-label">Motif d’annulation</span>
-                            <span>@(Model.CancellationReason ?? "Aucun motif renseigné")</span>
-                        </div>
-                    }
+                        <label class="team-calendar-filter calendar-filter-planned activity-edit-status-option">
+                            <input asp-for="Status"
+                                   id="activity-status-planned"
+                                   class="form-check-input activity-edit-status-choice"
+                                   type="radio"
+                                   value="@ActivityStatus.Planned"
+                                   disabled="@(!Model.CanEdit)"
+                                   data-activity-status-input />
+
+                            <i class="bi bi-clock team-calendar-filter-icon" aria-hidden="true"></i>
+                            <span>Planifiée</span>
+                        </label>
+
+                        <label class="team-calendar-filter calendar-filter-completed activity-edit-status-option">
+                            <input asp-for="Status"
+                                   id="activity-status-completed"
+                                   class="form-check-input activity-edit-status-choice"
+                                   type="radio"
+                                   value="@ActivityStatus.Completed"
+                                   disabled="@(!Model.CanEdit)"
+                                   data-activity-status-input />
+
+                            <i class="bi bi-check-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                            <span>Terminée</span>
+                        </label>
+
+                        <label class="team-calendar-filter calendar-filter-cancelled activity-edit-status-option">
+                            <input asp-for="Status"
+                                   id="activity-status-cancelled"
+                                   class="form-check-input activity-edit-status-choice"
+                                   type="radio"
+                                   value="@ActivityStatus.Cancelled"
+                                   disabled="@(!Model.CanEdit)"
+                                   data-activity-status-input />
+
+                            <i class="bi bi-x-lg team-calendar-filter-icon" aria-hidden="true"></i>
+                            <span>Annulée</span>
+                        </label>
+                    </fieldset>
+
+                    <div class="activity-edit-field activity-edit-cancellation-field">
+                        <label asp-for="CancellationReason" class="activity-edit-field-label"></label>
+
+                        <input asp-for="CancellationReason"
+                               class="form-control activity-edit-control"
+                               maxlength="500"
+                               placeholder="Facultatif · actif uniquement si Annulée"
+                               disabled="@(!Model.CanEdit || Model.Status != ActivityStatus.Cancelled)"
+                               data-activity-cancellation-input />
+
+                        <span asp-validation-for="CancellationReason" class="text-danger"></span>
+                    </div>
                 </div>
             </section>
 
@@ -282,9 +325,7 @@
                             <div class="activity-edit-participant-column-heading">
                                 <span>Inclus</span>
 
-                                @if (Model.CanEdit &&
-                                    (Model.Status == ActivityStatus.Planned ||
-                                     Model.Status == ActivityStatus.Completed))
+                                @if (Model.CanEdit)
                                 {
                                     <div class="form-check activity-edit-participant-header-control">
                                         <input id="activity-edit-participant-select-all"
@@ -304,14 +345,16 @@
                             <div class="activity-edit-participant-column-heading">
                                 <span>Présent</span>
 
-                                @if (Model.CanEdit &&
-                                     Model.Status == ActivityStatus.Completed)
+                                @if (Model.CanEdit)
                                 {
-                                    <div class="form-check activity-edit-participant-header-control">
+                                    <div class="form-check activity-edit-participant-header-control"
+                                         data-activity-attendance-control
+                                         hidden="@(Model.Status != ActivityStatus.Completed)">
                                         <input id="activity-edit-attendance-select-all"
                                                class="form-check-input"
                                                type="checkbox"
-                                               checked="@(Model.Participants.Any(participant => participant.IsSelected) && Model.Participants.Where(participant => participant.IsSelected).All(participant => participant.IsPresent))"
+                                               checked="@allSelectedParticipantsArePresent"
+                                               disabled="@(Model.Status != ActivityStatus.Completed)"
                                                data-activity-attendance-select-all />
 
                                         <label class="visually-hidden"
@@ -346,7 +389,7 @@
                                     }
                                 </div>
 
-                                @if (Model.CanEdit && Model.Status is ActivityStatus.Planned or ActivityStatus.Completed)
+                                @if (Model.CanEdit)
                                 {
                                     <div class="form-check activity-edit-participant-control">
                                         <input asp-for="Participants[index].IsSelected"
@@ -365,12 +408,14 @@
                                     </span>
                                 }
 
-                                @if (Model.CanEdit && Model.Status == ActivityStatus.Completed)
+                                @if (Model.CanEdit)
                                 {
-                                    <div class="form-check activity-edit-participant-control">
+                                    <div class="form-check activity-edit-participant-control"
+                                         data-activity-attendance-control
+                                         hidden="@(Model.Status != ActivityStatus.Completed)">
                                         <input asp-for="Participants[index].IsPresent"
                                                class="form-check-input"
-                                               disabled="@(!Model.Participants[index].IsSelected)"
+                                               disabled="@(Model.Status != ActivityStatus.Completed || !Model.Participants[index].IsSelected)"
                                                data-activity-attendance-checkbox />
 
                                         <label asp-for="Participants[index].IsPresent" class="visually-hidden">
@@ -378,7 +423,7 @@
                                         </label>
                                     </div>
                                 }
-                                else if (Model.Status == ActivityStatus.Completed && Model.Participants[index].IsSelected)
+                                else if (Model.OriginalStatus == ActivityStatus.Completed && Model.Participants[index].IsSelected)
                                 {
                                     <span class="activity-edit-participant-value">
                                         @(Model.Participants[index].IsPresent ? "Présent" : "Absent")
@@ -614,6 +659,11 @@
         </div>
     </form>
 </section>
+
+@section Styles
+{
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+}
 
 @section Scripts
 {

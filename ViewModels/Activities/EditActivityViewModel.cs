@@ -43,9 +43,16 @@ public sealed class EditActivityViewModel
 
     public string StatusLabel { get; set; } = string.Empty;
 
+    [Display(Name = "État")]
     public ActivityStatus Status { get; set; }
 
+    public ActivityStatus OriginalStatus { get; set; }
+
+    [StringLength(500, ErrorMessage = "Le motif d’annulation ne peut pas dépasser 500 caractères.")]
+    [Display(Name = "Motif d’annulation")]
     public string? CancellationReason { get; set; }
+
+    public bool StatusChangeConfirmed { get; set; }
 
     [StringLength(100, ErrorMessage = "Le nom de l’équipe adverse ne peut pas dépasser 100 caractères.")]
     [Display(Name = "Équipe adverse")]

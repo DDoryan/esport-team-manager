@@ -1078,7 +1078,7 @@ public sealed class ActivityEditingServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_WhenActivityIsCancelled_ReturnsReadOnlyDetails()
+    public async Task GetAsync_WhenActivityIsCancelled_ReturnsEditableDetails()
     {
         await using SqliteTestDatabase database = new();
         await database.InitializeAsync();
@@ -1101,7 +1101,232 @@ public sealed class ActivityEditingServiceTests
 
         Assert.Equal(ActivityStatus.Cancelled, details.Status);
         Assert.Equal("Joueurs indisponibles", details.CancellationReason);
-        Assert.False(details.CanEdit);
+        Assert.True(details.CanEdit);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedActivityLeavesStatusWithoutConfirmation_ReturnsFailure()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreateCompletedMatchActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Match terminé",
+            "Description initiale",
+            "Compte rendu initial",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null)
+            ],
+            [],
+            "Navi",
+            13,
+            8,
+            ActivityStatus.Planned,
+            null,
+            false);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Confirmez le changement depuis une activité terminée ou annulée.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity unchangedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal(ActivityStatus.Completed, unchangedActivity.Status);
+        Assert.Equal(Attendance.Present, Assert.Single(unchangedActivity.Participants).Attendance);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedActivityReturnsToPlannedWithConfirmation_PreservesData()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreateCompletedMatchActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Match replanifié",
+            "Description conservée",
+            "Compte rendu conservé",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null)
+            ],
+            [],
+            "Navi",
+            13,
+            8,
+            ActivityStatus.Planned,
+            null,
+            true);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity updatedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.MatchDetail)
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal(ActivityStatus.Planned, updatedActivity.Status);
+        Assert.Null(updatedActivity.CancellationReason);
+        Assert.Equal("Match replanifié", updatedActivity.Subtitle);
+        Assert.Equal("Compte rendu conservé", updatedActivity.Report);
+        Assert.Equal(Attendance.Present, Assert.Single(updatedActivity.Participants).Attendance);
+        Assert.Equal("Navi", updatedActivity.MatchDetail!.OpponentName);
+        Assert.Equal(13, updatedActivity.MatchDetail.TeamScore);
+        Assert.Equal(8, updatedActivity.MatchDetail.OpponentScore);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenPlannedActivityIsCompleted_AppliesAttendance()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Réunion terminée",
+            "Description initiale",
+            "Compte rendu final",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, Attendance.Present)
+            ],
+            [],
+            null,
+            null,
+            null,
+            ActivityStatus.Completed);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity completedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal(ActivityStatus.Completed, completedActivity.Status);
+        Assert.Equal(Attendance.Present, Assert.Single(completedActivity.Participants).Attendance);
+        Assert.Equal("Compte rendu final", completedActivity.Report);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCancelledActivityReturnsToPlannedWithConfirmation_ClearsReasonAndPreservesData()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        TeamActivity activity = await context.TeamActivities.SingleAsync(item => item.ActivityId == activityId);
+
+        activity.Cancel("Joueurs indisponibles", new DateTimeOffset(2026, 8, 23, 10, 0, 0, TimeSpan.Zero));
+        await context.SaveChangesAsync();
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Réunion replanifiée",
+            "Description initiale",
+            "Compte rendu initial",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null)
+            ],
+            [],
+            null,
+            null,
+            null,
+            ActivityStatus.Planned,
+            null,
+            true);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity updatedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal(ActivityStatus.Planned, updatedActivity.Status);
+        Assert.Null(updatedActivity.CancellationReason);
+        Assert.Equal("Réunion replanifiée", updatedActivity.Subtitle);
+        Assert.Equal("Compte rendu initial", updatedActivity.Report);
+        Assert.Single(updatedActivity.Participants);
     }
 
     private static ServiceProvider CreateServiceProvider(string connectionString)

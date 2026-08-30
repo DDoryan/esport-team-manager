@@ -241,6 +241,11 @@ public class ActivitiesController : Controller
         bool teamScoreIsProvided = model.TeamScore.HasValue;
         bool opponentScoreIsProvided = model.OpponentScore.HasValue;
 
+        if (!Enum.IsDefined(typeof(ActivityStatus), model.Status))
+        {
+            ModelState.AddModelError(nameof(model.Status), "L’état demandé n’est pas valide.");
+        }
+
         if (selectedActivityTypeRequiresScores && string.IsNullOrWhiteSpace(model.OpponentName))
         {
             ModelState.AddModelError(nameof(model.OpponentName), "L’équipe adverse est obligatoire pour une pracc ou un match officiel.");
@@ -252,7 +257,7 @@ public class ActivitiesController : Controller
             ModelState.AddModelError(nameof(model.OpponentScore), "Les deux scores doivent être renseignés ensemble.");
         }
 
-        if (selectedActivityTypeRequiresScores && details.Status == ActivityStatus.Completed && !teamScoreIsProvided && !opponentScoreIsProvided)
+        if (selectedActivityTypeRequiresScores && model.Status == ActivityStatus.Completed && !teamScoreIsProvided && !opponentScoreIsProvided)
         {
             ModelState.AddModelError(nameof(model.TeamScore), "Les deux scores sont obligatoires pour une activité terminée.");
             ModelState.AddModelError(nameof(model.OpponentScore), "Les deux scores sont obligatoires pour une activité terminée.");
@@ -263,7 +268,7 @@ public class ActivitiesController : Controller
             ModelState.AddModelError(nameof(model.PlannedEndLocal), "La fin prévue doit être strictement postérieure au début prévu.");
         }
 
-        if ((details.Status is ActivityStatus.Planned or ActivityStatus.Completed) && (model.Participants is null || !model.Participants.Any(participant => participant.IsSelected)))
+        if (model.Participants is null || !model.Participants.Any(participant => participant.IsSelected))
         {
             ModelState.AddModelError(nameof(model.Participants), "Sélectionnez au moins un participant.");
         }
@@ -278,7 +283,7 @@ public class ActivitiesController : Controller
         IReadOnlyCollection<UpdateActivityParticipantRequest> participants = (model.Participants ?? [])
             .Select(participant =>
             {
-                Attendance? attendance = details.Status == ActivityStatus.Completed && participant.IsSelected
+                Attendance? attendance = model.Status == ActivityStatus.Completed && participant.IsSelected
                     ? participant.IsPresent
                         ? Attendance.Present
                         : Attendance.Absent
@@ -306,7 +311,10 @@ public class ActivitiesController : Controller
             links,
             model.OpponentName,
             model.TeamScore,
-            model.OpponentScore);
+            model.OpponentScore,
+            model.Status,
+            model.CancellationReason,
+            model.StatusChangeConfirmed);
         UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
 
         if (!result.Succeeded)
@@ -416,8 +424,7 @@ public class ActivitiesController : Controller
         viewModel.TeamName = details.TeamName;
         viewModel.TimeZoneId = details.TimeZoneId;
         viewModel.StatusLabel = CreateStatusLabel(details.Status);
-        viewModel.Status = details.Status;
-        viewModel.CancellationReason = details.CancellationReason;
+        viewModel.OriginalStatus = details.Status;
         viewModel.UpdatedAtUtc = details.UpdatedAtUtc;
         viewModel.CanEdit = details.CanEdit;
         viewModel.ActivityTypes = details.ActivityTypes
@@ -434,7 +441,10 @@ public class ActivitiesController : Controller
                 postedParticipants.TryGetValue(participant.TeamMembershipId, out ActivityEditParticipantViewModel? postedParticipant);
 
                 bool isSelected = postedParticipant?.IsSelected ?? participant.IsSelected;
-                bool isPresent = postedParticipant?.IsPresent ?? participant.Attendance == Attendance.Present;
+                bool postedAttendanceIsApplicable = model is not null && viewModel.Status == ActivityStatus.Completed;
+                bool isPresent = postedAttendanceIsApplicable
+                    ? postedParticipant?.IsPresent ?? participant.Attendance == Attendance.Present
+                    : participant.Attendance == Attendance.Present;
 
                 return new ActivityEditParticipantViewModel(
                     participant.TeamMembershipId,
@@ -449,6 +459,9 @@ public class ActivitiesController : Controller
 
         if (initializeEditableValues)
         {
+            viewModel.Status = details.Status;
+            viewModel.CancellationReason = details.CancellationReason;
+            viewModel.StatusChangeConfirmed = false;
             viewModel.ActivityTypeId = details.ActivityTypeId;
             viewModel.Subtitle = details.Subtitle;
             viewModel.PlannedStartLocal = details.PlannedStartLocal;
