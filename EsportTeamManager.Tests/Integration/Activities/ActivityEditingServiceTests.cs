@@ -56,12 +56,168 @@ public sealed class ActivityEditingServiceTests
         Assert.Equal("Owner#A01", participant.DisplayName);
         Assert.Equal("Joueur", participant.RoleLabel);
         Assert.True(participant.IsOwner);
+        Assert.True(participant.IsSelected);
+        Assert.False(participant.IsFormerMember);
         Assert.Null(participant.Attendance);
 
         ActivityEditLinkSummary link = Assert.Single(details.Links);
 
         Assert.Equal("Discord", link.Name);
         Assert.Equal("https://discord.com", link.Url);
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenActivityIsPlanned_ReturnsActiveMembersAndExistingFormerParticipant()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser activeUser = await CreateUserAsync(userManager, "active@example.test", "Active", "B02");
+        ApplicationUser formerUser = await CreateUserAsync(userManager, "former@example.test", "Former", "C03");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership activeMembership = await AddMembershipAsync(context, team.TeamId, activeUser, "Player");
+        TeamMembership formerMembership = await AddMembershipAsync(context, team.TeamId, formerUser, "Player");
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        TeamActivity activity = await context.TeamActivities
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        activity.ReplaceParticipants(
+            [team.OwnerMembershipId, formerMembership.TeamMembershipId],
+            new DateTimeOffset(2026, 8, 23, 9, 0, 0, TimeSpan.Zero));
+
+        formerMembership.Leave(new DateTimeOffset(2026, 8, 23, 9, 30, 0, TimeSpan.Zero));
+
+        await context.SaveChangesAsync();
+
+        ActivityEditDetails details = Assert.IsType<ActivityEditDetails>(await activityEditingService.GetAsync(owner.Id, team.TeamId, activityId));
+
+        Assert.Equal(3, details.Participants.Count);
+
+        ActivityEditParticipantSummary ownerParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == team.OwnerMembershipId);
+        ActivityEditParticipantSummary activeParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == activeMembership.TeamMembershipId);
+        ActivityEditParticipantSummary formerParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == formerMembership.TeamMembershipId);
+
+        Assert.True(ownerParticipant.IsSelected);
+        Assert.False(ownerParticipant.IsFormerMember);
+        Assert.False(activeParticipant.IsSelected);
+        Assert.False(activeParticipant.IsFormerMember);
+        Assert.True(formerParticipant.IsSelected);
+        Assert.True(formerParticipant.IsFormerMember);
+        Assert.Null(ownerParticipant.Attendance);
+        Assert.Null(activeParticipant.Attendance);
+        Assert.Null(formerParticipant.Attendance);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenPlannedParticipantSelectionChanges_SynchronizesParticipants()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser player = await CreateUserAsync(userManager, "player@example.test", "Player", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership playerMembership = await AddMembershipAsync(context, team.TeamId, player, "Player");
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Participants mis à jour",
+            "Description initiale",
+            "Compte rendu initial",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, false, null),
+            new UpdateActivityParticipantRequest(playerMembership.TeamMembershipId, true, null)
+            ],
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        ActivityParticipant participant = await context.ActivityParticipants
+            .AsNoTracking()
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal(playerMembership.TeamMembershipId, participant.TeamMembershipId);
+        Assert.Null(participant.Attendance);
+
+        TeamActivity updatedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal("Participants mis à jour", updatedActivity.Subtitle);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenNoPlannedParticipantIsSelected_ReturnsFailureWithoutModification()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Modification interdite",
+            "Description modifiée",
+            "Compte rendu modifié",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, false, null)
+            ],
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Sélectionnez au moins un participant.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity unchangedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal("Sous-titre initial", unchangedActivity.Subtitle);
+        Assert.Equal("Description initiale", unchangedActivity.Description);
+        Assert.Equal("Compte rendu initial", unchangedActivity.Report);
+        Assert.Equal(team.OwnerMembershipId, Assert.Single(unchangedActivity.Participants).TeamMembershipId);
     }
 
     [Fact]
@@ -90,6 +246,7 @@ public sealed class ActivityEditingServiceTests
             "  Préparation tournoi  ",
             "  Nouvelle description.  ",
             "  Nouveau compte rendu.  ",
+            CreateParticipantRequests(team),
             []);
 
         UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
@@ -146,6 +303,7 @@ public sealed class ActivityEditingServiceTests
             $"Modification par {roleCode}",
             "Description modifiée.",
             null,
+            CreateParticipantRequests(team),
             []);
 
         UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
@@ -195,6 +353,7 @@ public sealed class ActivityEditingServiceTests
             "Modification interdite",
             null,
             null,
+            CreateParticipantRequests(team),
             []);
 
         UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
@@ -239,6 +398,7 @@ public sealed class ActivityEditingServiceTests
             "Modification invalide",
             "Description invalide",
             null,
+            CreateParticipantRequests(team),
             []);
 
         UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
@@ -288,6 +448,7 @@ public sealed class ActivityEditingServiceTests
             "Sous-titre initial",
             "Description initiale",
             "Compte rendu initial",
+            CreateParticipantRequests(team),
             [
                 new UpdateActivityLinkRequest(updatedLink.ActivityLinkId, "  Discord équipe  ", "  https://discord.gg/phoenix  "),
             new UpdateActivityLinkRequest(Guid.Empty, "  VOD  ", "  https://example.test/vod  ")
@@ -351,6 +512,7 @@ public sealed class ActivityEditingServiceTests
             "Modification invalide",
             "Description modifiée",
             "Compte rendu modifié",
+            CreateParticipantRequests(team),
             [
                 new UpdateActivityLinkRequest(existingLink.ActivityLinkId, "Discord modifié", "ftp://example.test")
             ]);
@@ -407,6 +569,7 @@ public sealed class ActivityEditingServiceTests
             "Modification interdite",
             "Description modifiée",
             null,
+            CreateParticipantRequests(team),
             [
                 new UpdateActivityLinkRequest(otherActivityLink.ActivityLinkId, "Lien détourné", "https://example.test/modifie")
             ]);
@@ -462,6 +625,7 @@ public sealed class ActivityEditingServiceTests
             "Modification invalide",
             "Description modifiée",
             null,
+            CreateParticipantRequests(team),
             [
                 new UpdateActivityLinkRequest(existingLink.ActivityLinkId, "Discord principal", "https://discord.gg/phoenix"),
             new UpdateActivityLinkRequest(existingLink.ActivityLinkId, "Discord secondaire", "https://discord.gg/secondaire")
@@ -485,6 +649,214 @@ public sealed class ActivityEditingServiceTests
         Assert.Equal("Sous-titre initial", unchangedActivity.Subtitle);
         Assert.Equal("Discord", unchangedLink.Name);
         Assert.Equal("https://discord.com", unchangedLink.Url);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenInactiveMemberIsAddedToPlannedActivity_ReturnsFailureWithoutModification()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser formerUser = await CreateUserAsync(userManager, "former@example.test", "Former", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership formerMembership = await AddMembershipAsync(context, team.TeamId, formerUser, "Player");
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        formerMembership.Leave(new DateTimeOffset(2026, 8, 23, 9, 30, 0, TimeSpan.Zero));
+        await context.SaveChangesAsync();
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Modification interdite",
+            "Description modifiée",
+            "Compte rendu modifié",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null),
+            new UpdateActivityParticipantRequest(formerMembership.TeamMembershipId, true, null)
+            ],
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Un ou plusieurs participants ne sont pas membres actifs de cette équipe et ne sont pas déjà associés à l’activité.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity unchangedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal("Sous-titre initial", unchangedActivity.Subtitle);
+        Assert.Equal(team.OwnerMembershipId, Assert.Single(unchangedActivity.Participants).TeamMembershipId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedAttendancesChange_UpdatesEveryAttendance()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser player = await CreateUserAsync(userManager, "player@example.test", "Player", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership playerMembership = await AddMembershipAsync(context, team.TeamId, player, "Player");
+        Guid activityId = await CreateCompletedActivityAsync(context, team, playerMembership.TeamMembershipId);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Sous-titre initial",
+            "Description initiale",
+            "Compte rendu initial",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, Attendance.Absent),
+            new UpdateActivityParticipantRequest(playerMembership.TeamMembershipId, true, Attendance.Present)
+            ],
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        List<ActivityParticipant> participants = await context.ActivityParticipants
+            .AsNoTracking()
+            .Where(participant => participant.ActivityId == activityId)
+            .ToListAsync();
+
+        Assert.Equal(Attendance.Absent, Assert.Single(participants, participant => participant.TeamMembershipId == team.OwnerMembershipId).Attendance);
+        Assert.Equal(Attendance.Present, Assert.Single(participants, participant => participant.TeamMembershipId == playerMembership.TeamMembershipId).Attendance);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedParticipantSelectionChanges_SynchronizesParticipantsAndAttendances()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser removedPlayer = await CreateUserAsync(userManager, "removed@example.test", "Removed", "B02");
+        ApplicationUser addedPlayer = await CreateUserAsync(userManager, "added@example.test", "Added", "C03");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership removedMembership = await AddMembershipAsync(context, team.TeamId, removedPlayer, "Player");
+        TeamMembership addedMembership = await AddMembershipAsync(context, team.TeamId, addedPlayer, "Player");
+        Guid activityId = await CreateCompletedActivityAsync(context, team, removedMembership.TeamMembershipId);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Participants terminés modifiés",
+            "Description modifiée",
+            "Compte rendu modifié",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, Attendance.Absent),
+            new UpdateActivityParticipantRequest(removedMembership.TeamMembershipId, false, null),
+            new UpdateActivityParticipantRequest(addedMembership.TeamMembershipId, true, Attendance.Present)
+            ],
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity updatedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        Assert.Equal("Participants terminés modifiés", updatedActivity.Subtitle);
+        Assert.Equal("Description modifiée", updatedActivity.Description);
+        Assert.Equal("Compte rendu modifié", updatedActivity.Report);
+        Assert.Equal(2, updatedActivity.Participants.Count);
+        Assert.DoesNotContain(updatedActivity.Participants, participant => participant.TeamMembershipId == removedMembership.TeamMembershipId);
+        Assert.Equal(Attendance.Absent, Assert.Single(updatedActivity.Participants, participant => participant.TeamMembershipId == team.OwnerMembershipId).Attendance);
+        Assert.Equal(Attendance.Present, Assert.Single(updatedActivity.Participants, participant => participant.TeamMembershipId == addedMembership.TeamMembershipId).Attendance);
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenCompletedActivityIsEditable_ReturnsCurrentAndHistoricallyEligibleMembers()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser activeUser = await CreateUserAsync(userManager, "active@example.test", "Active", "B02");
+        ApplicationUser eligibleFormerUser = await CreateUserAsync(userManager, "eligible@example.test", "Eligible", "C03");
+        ApplicationUser ineligibleFormerUser = await CreateUserAsync(userManager, "ineligible@example.test", "Ineligible", "D04");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamMembership activeMembership = await AddMembershipAsync(context, team.TeamId, activeUser, "Player");
+        TeamMembership eligibleFormerMembership = await AddMembershipAsync(context, team.TeamId, eligibleFormerUser, "Player");
+        TeamMembership ineligibleFormerMembership = await AddMembershipAsync(context, team.TeamId, ineligibleFormerUser, "Player");
+        Guid activityId = await CreateCompletedActivityAsync(context, team, activeMembership.TeamMembershipId);
+
+        eligibleFormerMembership.Leave(new DateTimeOffset(2026, 8, 24, 17, 0, 0, TimeSpan.Zero));
+        ineligibleFormerMembership.Leave(new DateTimeOffset(2026, 8, 24, 15, 0, 0, TimeSpan.Zero));
+
+        await context.SaveChangesAsync();
+
+        ActivityEditDetails details = Assert.IsType<ActivityEditDetails>(await activityEditingService.GetAsync(owner.Id, team.TeamId, activityId));
+
+        Assert.True(details.CanEdit);
+        Assert.Equal(ActivityStatus.Completed, details.Status);
+        Assert.Equal(3, details.Participants.Count);
+
+        ActivityEditParticipantSummary ownerParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == team.OwnerMembershipId);
+        ActivityEditParticipantSummary activeParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == activeMembership.TeamMembershipId);
+        ActivityEditParticipantSummary eligibleFormerParticipant = Assert.Single(details.Participants, participant => participant.TeamMembershipId == eligibleFormerMembership.TeamMembershipId);
+
+        Assert.True(ownerParticipant.IsSelected);
+        Assert.Equal(Attendance.Present, ownerParticipant.Attendance);
+        Assert.True(activeParticipant.IsSelected);
+        Assert.Equal(Attendance.Absent, activeParticipant.Attendance);
+        Assert.False(eligibleFormerParticipant.IsSelected);
+        Assert.True(eligibleFormerParticipant.IsFormerMember);
+        Assert.Null(eligibleFormerParticipant.Attendance);
+        Assert.DoesNotContain(details.Participants, participant => participant.TeamMembershipId == ineligibleFormerMembership.TeamMembershipId);
     }
 
     [Fact]
@@ -532,6 +904,14 @@ public sealed class ActivityEditingServiceTests
         services.AddScoped<IActivityEditingService, ActivityEditingService>();
 
         return services.BuildServiceProvider();
+    }
+
+    private static IReadOnlyCollection<UpdateActivityParticipantRequest> CreateParticipantRequests(TeamSetup team)
+    {
+        return
+        [
+            new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null)
+        ];
     }
 
     private static async Task<ApplicationUser> CreateUserAsync(UserManager<ApplicationUser> userManager, string email, string pseudo, string tag)
@@ -600,6 +980,30 @@ public sealed class ActivityEditingServiceTests
             "Compte rendu initial");
 
         context.TeamActivities.Add(activity);
+        await context.SaveChangesAsync();
+
+        return activityId;
+    }
+
+    private static async Task<Guid> CreateCompletedActivityAsync(ApplicationDbContext context, TeamSetup team, Guid additionalMembershipId)
+    {
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        TeamActivity activity = await context.TeamActivities
+            .Include(item => item.Participants)
+            .SingleAsync(item => item.ActivityId == activityId);
+
+        activity.ReplaceParticipants(
+            [team.OwnerMembershipId, additionalMembershipId],
+            new DateTimeOffset(2026, 8, 23, 9, 0, 0, TimeSpan.Zero));
+
+        activity.Complete(
+            new Dictionary<Guid, Attendance>
+            {
+                [team.OwnerMembershipId] = Attendance.Present,
+                [additionalMembershipId] = Attendance.Absent
+            },
+            new DateTimeOffset(2026, 8, 23, 10, 0, 0, TimeSpan.Zero));
+
         await context.SaveChangesAsync();
 
         return activityId;

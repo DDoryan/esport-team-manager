@@ -181,6 +181,112 @@ namespace EsportTeamManager.Tests.Domain
         }
 
         [Fact]
+        public void ReplaceParticipants_PlannedActivity_AddsAndRemovesParticipantsWithoutAttendance()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid firstMembershipId = Guid.NewGuid();
+            Guid retainedMembershipId = Guid.NewGuid();
+            Guid addedMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [firstMembershipId, retainedMembershipId], createdAtUtc);
+            ActivityParticipant retainedParticipant = activity.Participants.Single(participant => participant.TeamMembershipId == retainedMembershipId);
+            DateTimeOffset updatedAtUtc = createdAtUtc.AddMinutes(30);
+
+            activity.ReplaceParticipants([retainedMembershipId, addedMembershipId], updatedAtUtc);
+
+            Assert.Equal(2, activity.Participants.Count);
+            Assert.DoesNotContain(activity.Participants, participant => participant.TeamMembershipId == firstMembershipId);
+            Assert.Same(retainedParticipant, activity.Participants.Single(participant => participant.TeamMembershipId == retainedMembershipId));
+            Assert.Contains(activity.Participants, participant => participant.TeamMembershipId == addedMembershipId);
+            Assert.All(activity.Participants, participant => Assert.Null(participant.Attendance));
+            Assert.Equal(updatedAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void UpdateAttendances_CompletedActivity_UpdatesEveryParticipant()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid firstMembershipId = Guid.NewGuid();
+            Guid secondMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [firstMembershipId, secondMembershipId], createdAtUtc);
+            DateTimeOffset completedAtUtc = createdAtUtc.AddHours(2);
+
+            activity.Complete(
+                new Dictionary<Guid, Attendance>
+                {
+                    [firstMembershipId] = Attendance.Present,
+                    [secondMembershipId] = Attendance.Absent
+                },
+                completedAtUtc);
+
+            DateTimeOffset updatedAtUtc = completedAtUtc.AddMinutes(30);
+
+            activity.UpdateAttendances(
+                new Dictionary<Guid, Attendance>
+                {
+                    [firstMembershipId] = Attendance.Absent,
+                    [secondMembershipId] = Attendance.Present
+                },
+                updatedAtUtc);
+
+            Assert.Equal(Attendance.Absent, activity.Participants.Single(participant => participant.TeamMembershipId == firstMembershipId).Attendance);
+            Assert.Equal(Attendance.Present, activity.Participants.Single(participant => participant.TeamMembershipId == secondMembershipId).Attendance);
+            Assert.Equal(updatedAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void UpdateAttendances_WithIncompleteData_ThrowsWithoutChangingAttendance()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid firstMembershipId = Guid.NewGuid();
+            Guid secondMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [firstMembershipId, secondMembershipId], createdAtUtc);
+            DateTimeOffset completedAtUtc = createdAtUtc.AddHours(2);
+
+            activity.Complete(
+                new Dictionary<Guid, Attendance>
+                {
+                    [firstMembershipId] = Attendance.Present,
+                    [secondMembershipId] = Attendance.Absent
+                },
+                completedAtUtc);
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.UpdateAttendances(
+                new Dictionary<Guid, Attendance>
+                {
+                    [firstMembershipId] = Attendance.Absent
+                },
+                completedAtUtc.AddMinutes(30)));
+
+            Assert.Equal("Attendance must be provided for every activity participant.", exception.Message);
+            Assert.Equal(Attendance.Present, activity.Participants.Single(participant => participant.TeamMembershipId == firstMembershipId).Attendance);
+            Assert.Equal(Attendance.Absent, activity.Participants.Single(participant => participant.TeamMembershipId == secondMembershipId).Attendance);
+            Assert.Equal(completedAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
+        public void UpdateAttendances_PlannedActivity_ThrowsWithoutSavingAttendance()
+        {
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            Guid participantMembershipId = Guid.NewGuid();
+            ActivityType activityType = new ActivityType(3, "Meeting", "Réunion", true);
+            TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), createdAtUtc.AddHours(1), createdAtUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc);
+
+            DomainException exception = Assert.Throws<DomainException>(() => activity.UpdateAttendances(
+                new Dictionary<Guid, Attendance>
+                {
+                    [participantMembershipId] = Attendance.Present
+                },
+                createdAtUtc.AddMinutes(30)));
+
+            Assert.Equal("Attendance can only be corrected on a completed activity.", exception.Message);
+            Assert.Null(Assert.Single(activity.Participants).Attendance);
+            Assert.Equal(createdAtUtc, activity.UpdatedAtUtc);
+        }
+
+        [Fact]
         public void Cancel_PlannedActivity_PreventsFurtherModification()
         {
             DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;

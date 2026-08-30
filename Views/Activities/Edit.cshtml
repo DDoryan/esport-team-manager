@@ -1,4 +1,6 @@
-﻿@model RepriseWeb.ViewModels.Activities.EditActivityViewModel
+﻿@using EsportTeamManager.Domain.Enums
+
+@model RepriseWeb.ViewModels.Activities.EditActivityViewModel
 
 @{
     string activityTitle = string.IsNullOrWhiteSpace(Model.Subtitle) ? Model.TypeLabel : $"{Model.TypeLabel} — {Model.Subtitle}";
@@ -201,26 +203,142 @@
             </section>
 
             <section class="activity-edit-section" aria-labelledby="activity-participants-title">
-                <h2 id="activity-participants-title" class="activity-edit-section-title">Participants et présences</h2>
+                @{
+                    bool allParticipantsAreSelected = Model.Participants.Count > 0 && Model.Participants.All(participant => participant.IsSelected);
+                    bool selectedParticipantExists = Model.Participants.Any(participant => participant.IsSelected);
+                    bool allSelectedParticipantsArePresent = selectedParticipantExists && Model.Participants.Where(participant => participant.IsSelected).All(participant => participant.IsPresent);
+                }
 
-                <div class="activity-edit-participant-list">
-                    @foreach (var participant in Model.Participants)
-                    {
-                        <div class="activity-edit-participant">
-                            <div>
-                                <span class="activity-edit-participant-name">@participant.DisplayName</span>
-                                <span class="badge text-bg-secondary">@participant.RoleLabel</span>
+                <h2 id="activity-participants-title"
+                    class="activity-edit-section-title mb-0">
+                    Participants et présences
+                </h2>
 
-                                @if (participant.IsOwner)
+                @if (Model.Participants.Count == 0)
+                {
+                    <p class="text-body-secondary mt-3 mb-0">Aucun participant associé.</p>
+                }
+                else
+                {
+                    <div class="activity-edit-participant-list mt-3">
+                        <div class="activity-edit-participant-column-headers">
+                            <span>Participants</span>
+
+                            <div class="activity-edit-participant-column-heading">
+                                <span>Inclus</span>
+
+                                @if (Model.CanEdit &&
+                                    (Model.Status == ActivityStatus.Planned ||
+                                     Model.Status == ActivityStatus.Completed))
                                 {
-                                    <span class="badge team-owner-badge">Propriétaire</span>
+                                    <div class="form-check activity-edit-participant-header-control">
+                                        <input id="activity-edit-participant-select-all"
+                                               class="form-check-input"
+                                               type="checkbox"
+                                               checked="@allParticipantsAreSelected"
+                                               data-activity-participant-select-all />
+
+                                        <label class="visually-hidden"
+                                               for="activity-edit-participant-select-all">
+                                            Inclure tous les participants
+                                        </label>
+                                    </div>
                                 }
                             </div>
 
-                            <span class="activity-edit-attendance">@participant.AttendanceLabel</span>
+                            <div class="activity-edit-participant-column-heading">
+                                <span>Présent</span>
+
+                                @if (Model.CanEdit &&
+                                     Model.Status == ActivityStatus.Completed)
+                                {
+                                    <div class="form-check activity-edit-participant-header-control">
+                                        <input id="activity-edit-attendance-select-all"
+                                               class="form-check-input"
+                                               type="checkbox"
+                                               checked="@(Model.Participants.Any(participant => participant.IsSelected) && Model.Participants.Where(participant => participant.IsSelected).All(participant => participant.IsPresent))"
+                                               data-activity-attendance-select-all />
+
+                                        <label class="visually-hidden"
+                                               for="activity-edit-attendance-select-all">
+                                            Marquer tous les participants inclus comme présents
+                                        </label>
+                                    </div>
+                                }
+                            </div>
                         </div>
-                    }
-                </div>
+
+                        @for (int index = 0; index < Model.Participants.Count; index++)
+                        {
+                            <div class="activity-edit-participant" data-activity-participant-row>
+                                @if (Model.CanEdit)
+                                {
+                                    <input asp-for="Participants[index].TeamMembershipId" type="hidden" />
+                                }
+
+                                <div class="activity-edit-participant-identity">
+                                    <span class="activity-edit-participant-name">@Model.Participants[index].DisplayName</span>
+                                    <span class="badge text-bg-secondary">@Model.Participants[index].RoleLabel</span>
+
+                                    @if (Model.Participants[index].IsOwner)
+                                    {
+                                        <span class="badge team-owner-badge">Propriétaire</span>
+                                    }
+
+                                    @if (Model.Participants[index].IsFormerMember)
+                                    {
+                                        <span class="badge text-bg-secondary">Ancien membre</span>
+                                    }
+                                </div>
+
+                                @if (Model.CanEdit && Model.Status is ActivityStatus.Planned or ActivityStatus.Completed)
+                                {
+                                    <div class="form-check activity-edit-participant-control">
+                                        <input asp-for="Participants[index].IsSelected"
+                                               class="form-check-input"
+                                               data-activity-participant-checkbox />
+
+                                        <label asp-for="Participants[index].IsSelected" class="visually-hidden">
+                                            Inclure @Model.Participants[index].DisplayName
+                                        </label>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="activity-edit-participant-value">
+                                        @(Model.Participants[index].IsSelected ? "Oui" : "Non")
+                                    </span>
+                                }
+
+                                @if (Model.CanEdit && Model.Status == ActivityStatus.Completed)
+                                {
+                                    <div class="form-check activity-edit-participant-control">
+                                        <input asp-for="Participants[index].IsPresent"
+                                               class="form-check-input"
+                                               disabled="@(!Model.Participants[index].IsSelected)"
+                                               data-activity-attendance-checkbox />
+
+                                        <label asp-for="Participants[index].IsPresent" class="visually-hidden">
+                                            Marquer @Model.Participants[index].DisplayName présent
+                                        </label>
+                                    </div>
+                                }
+                                else if (Model.Status == ActivityStatus.Completed && Model.Participants[index].IsSelected)
+                                {
+                                    <span class="activity-edit-participant-value">
+                                        @(Model.Participants[index].IsPresent ? "Présent" : "Absent")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="activity-edit-participant-value">—</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <span asp-validation-for="Participants" class="text-danger"></span>
             </section>
 
             <section class="activity-edit-section" aria-labelledby="activity-description-title">
@@ -272,6 +390,13 @@
                          aria-label="Liens de l’activité"
                          aria-live="polite"
                          data-activity-link-list>
+
+                        <div class="row g-3 activity-edit-link-column-headers" aria-hidden="true">
+                            <span class="col-5 col-md-4">Nom du lien</span>
+                            <span class="col-7 col-md">URL</span>
+                            <span class="d-none d-md-block col-md-auto activity-link-remove-column"></span>
+                        </div>
+
                         @for (int index = 0; index < Model.Links.Count; index++)
                         {
                             <div class="activity-link-item" data-activity-link-row data-link-index="@index">
@@ -279,16 +404,16 @@
                                 <input asp-for="Links[index].ActivityLinkId" type="hidden" />
 
                                 <div class="row g-3 align-items-start">
-                                    <div class="col-12 col-md-4">
-                                        <label asp-for="Links[index].Name" class="form-label"></label>
+                                    <div class="col-5 col-md-4">
+                                        <label asp-for="Links[index].Name" class="visually-hidden"></label>
                                         <input asp-for="Links[index].Name"
                                                class="form-control activity-edit-control"
                                                maxlength="100" />
                                         <span asp-validation-for="Links[index].Name" class="text-danger"></span>
                                     </div>
 
-                                    <div class="col-12 col-md">
-                                        <label asp-for="Links[index].Url" class="form-label"></label>
+                                    <div class="col-7 col-md">
+                                        <label asp-for="Links[index].Url" class="visually-hidden"></label>
                                         <input asp-for="Links[index].Url"
                                                class="form-control activity-edit-control"
                                                type="url"
@@ -315,8 +440,8 @@
                             <input type="hidden" value="@Guid.Empty" data-link-id-input />
 
                             <div class="row g-3 align-items-start">
-                                <div class="col-12 col-md-4">
-                                    <label class="form-label" data-link-name-label>Nom du lien</label>
+                                <div class="col-5 col-md-4">
+                                    <label class="visually-hidden" data-link-name-label>Nom du lien</label>
                                     <input class="form-control activity-edit-control"
                                            type="text"
                                            maxlength="100"
@@ -330,8 +455,8 @@
                                           data-valmsg-replace="true"></span>
                                 </div>
 
-                                <div class="col-12 col-md">
-                                    <label class="form-label" data-link-url-label>URL</label>
+                                <div class="col-7 col-md">
+                                    <label class="visually-hidden" data-link-url-label>URL</label>
                                     <input class="form-control activity-edit-control"
                                            type="url"
                                            maxlength="2048"

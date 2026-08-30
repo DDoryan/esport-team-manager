@@ -233,12 +233,30 @@ public class ActivitiesController : Controller
             ModelState.AddModelError(nameof(model.PlannedEndLocal), "La fin prévue doit être strictement postérieure au début prévu.");
         }
 
+        if ((details.Status is ActivityStatus.Planned or ActivityStatus.Completed) && (model.Participants is null || !model.Participants.Any(participant => participant.IsSelected)))
+        {
+            ModelState.AddModelError(nameof(model.Participants), "Sélectionnez au moins un participant.");
+        }
+
         if (!ModelState.IsValid)
         {
             EditActivityViewModel invalidViewModel = BuildEditViewModel(details, model);
 
             return View(invalidViewModel);
         }
+
+        IReadOnlyCollection<UpdateActivityParticipantRequest> participants = (model.Participants ?? [])
+            .Select(participant =>
+            {
+                Attendance? attendance = details.Status == ActivityStatus.Completed && participant.IsSelected
+                    ? participant.IsPresent
+                        ? Attendance.Present
+                        : Attendance.Absent
+                    : null;
+
+                return new UpdateActivityParticipantRequest(participant.TeamMembershipId, participant.IsSelected, attendance);
+            })
+            .ToArray();
 
         IReadOnlyCollection<UpdateActivityLinkRequest> links = (model.Links ?? [])
             .Select(link => new UpdateActivityLinkRequest(link.ActivityLinkId, link.Name ?? string.Empty, link.Url ?? string.Empty))
@@ -254,6 +272,7 @@ public class ActivitiesController : Controller
             model.Subtitle,
             model.Description,
             model.Report,
+            participants,
             links);
         UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
 
@@ -364,6 +383,7 @@ public class ActivitiesController : Controller
         viewModel.TeamName = details.TeamName;
         viewModel.TimeZoneId = details.TimeZoneId;
         viewModel.StatusLabel = CreateStatusLabel(details.Status);
+        viewModel.Status = details.Status;
         viewModel.CancellationReason = details.CancellationReason;
         viewModel.OpponentName = details.OpponentName;
         viewModel.TeamScore = details.TeamScore;
@@ -373,9 +393,29 @@ public class ActivitiesController : Controller
         viewModel.ActivityTypes = details.ActivityTypes
             .Select(activityType => new ActivityTypeOptionViewModel(activityType.ActivityTypeId, activityType.Code, activityType.Label))
             .ToArray();
+        Dictionary<Guid, ActivityEditParticipantViewModel> postedParticipants = (model?.Participants ?? [])
+            .Where(participant => participant.TeamMembershipId != Guid.Empty)
+            .GroupBy(participant => participant.TeamMembershipId)
+            .ToDictionary(group => group.Key, group => group.First());
+
         viewModel.Participants = details.Participants
-            .Select(participant => new ActivityEditParticipantViewModel(participant.TeamMembershipId, participant.DisplayName, participant.RoleLabel, participant.IsOwner, CreateAttendanceLabel(participant.Attendance)))
-            .ToArray();
+            .Select(participant =>
+            {
+                postedParticipants.TryGetValue(participant.TeamMembershipId, out ActivityEditParticipantViewModel? postedParticipant);
+
+                bool isSelected = postedParticipant?.IsSelected ?? participant.IsSelected;
+                bool isPresent = postedParticipant?.IsPresent ?? participant.Attendance == Attendance.Present;
+
+                return new ActivityEditParticipantViewModel(
+                    participant.TeamMembershipId,
+                    participant.DisplayName,
+                    participant.RoleLabel,
+                    participant.IsOwner,
+                    isSelected,
+                    participant.IsFormerMember,
+                    isPresent);
+            })
+            .ToList();
 
         if (initializeEditableValues)
         {
@@ -405,16 +445,6 @@ public class ActivitiesController : Controller
             ActivityStatus.Completed => "Terminée",
             ActivityStatus.Cancelled => "Annulée",
             _ => status.ToString()
-        };
-    }
-
-    private static string CreateAttendanceLabel(Attendance? attendance)
-    {
-        return attendance switch
-        {
-            Attendance.Present => "Présent",
-            Attendance.Absent => "Absent",
-            _ => "Non renseignée"
         };
     }
 

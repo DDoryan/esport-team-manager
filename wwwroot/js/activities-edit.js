@@ -7,6 +7,10 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
     const activityAddLinkButton = activityEditForm.querySelector("[data-add-activity-link]");
     const activityLinkList = activityEditForm.querySelector("[data-activity-link-list]");
     const activityLinkTemplate = document.getElementById("activity-edit-link-template");
+    const activityParticipantSelectAll = activityEditForm.querySelector("[data-activity-participant-select-all]");
+    const activityParticipantCheckboxes = activityEditForm.querySelectorAll("[data-activity-participant-checkbox]");
+    const activityAttendanceSelectAll = activityEditForm.querySelector("[data-activity-attendance-select-all]");
+    const activityAttendanceCheckboxes = activityEditForm.querySelectorAll("[data-activity-attendance-checkbox]");
     let formIsSubmitting = false;
 
     function createFormSnapshot()
@@ -59,6 +63,58 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
         }
 
         return jqueryForm.valid();
+    }
+
+    function updateActivityAttendanceAvailability(participantCheckbox)
+    {
+        if (!(participantCheckbox instanceof HTMLInputElement))
+        {
+            return;
+        }
+
+        const participantRow = participantCheckbox.closest("[data-activity-participant-row]");
+
+        if (participantRow === null)
+        {
+            return;
+        }
+
+        const attendanceCheckbox = participantRow.querySelector("[data-activity-attendance-checkbox]");
+
+        if (!(attendanceCheckbox instanceof HTMLInputElement))
+        {
+            return;
+        }
+
+        attendanceCheckbox.disabled = !participantCheckbox.checked;
+    }
+
+    function configureActivityToggleAll(toggleAllCheckbox, individualCheckboxes, afterIndividualChange = null)
+    {
+        if (!(toggleAllCheckbox instanceof HTMLInputElement))
+        {
+            return;
+        }
+
+        toggleAllCheckbox.indeterminate = false;
+
+        toggleAllCheckbox.addEventListener("change", () =>
+        {
+            for (const individualCheckbox of individualCheckboxes)
+            {
+                if (!(individualCheckbox instanceof HTMLInputElement) || individualCheckbox.disabled)
+                {
+                    continue;
+                }
+
+                individualCheckbox.checked = toggleAllCheckbox.checked;
+
+                if (typeof afterIndividualChange === "function")
+                {
+                    afterIndividualChange(individualCheckbox);
+                }
+            }
+        });
     }
 
     function configureActivityLinkRemoval(activityLinkRow)
@@ -160,6 +216,19 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
 
         return nextIndex;
     }
+
+    for (const participantCheckbox of activityParticipantCheckboxes)
+    {
+        updateActivityAttendanceAvailability(participantCheckbox);
+
+        participantCheckbox.addEventListener("change", () =>
+        {
+            updateActivityAttendanceAvailability(participantCheckbox);
+        });
+    }
+
+    configureActivityToggleAll(activityParticipantSelectAll, activityParticipantCheckboxes, updateActivityAttendanceAvailability);
+    configureActivityToggleAll(activityAttendanceSelectAll, activityAttendanceCheckboxes);
 
     updateMatchSectionVisibility();
     focusFirstInvalidField();
