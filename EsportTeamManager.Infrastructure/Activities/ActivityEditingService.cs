@@ -212,7 +212,8 @@ public sealed class ActivityEditingService : IActivityEditingService
             canEdit,
             activityTypes,
             participants,
-            links);
+            links,
+            activity.MatchDetail?.Result);
     }
 
     public async Task<UpdateActivityResult> UpdateAsync(UpdateActivityRequest request, CancellationToken cancellationToken = default)
@@ -268,6 +269,35 @@ public sealed class ActivityEditingService : IActivityEditingService
         if (activityType is null)
         {
             return UpdateActivityResult.Failure(["Le type d’activité sélectionné n’est pas disponible pour cette équipe."]);
+        }
+
+        bool activityTypeRequiresScores = activityType.Code is "Pracc" or "OfficialMatch";
+        bool teamScoreIsProvided = request.TeamScore.HasValue;
+        bool opponentScoreIsProvided = request.OpponentScore.HasValue;
+
+        if (activityTypeRequiresScores && string.IsNullOrWhiteSpace(request.OpponentName))
+        {
+            return UpdateActivityResult.Failure(["L’équipe adverse est obligatoire pour une pracc ou un match officiel."]);
+        }
+
+        if (activityTypeRequiresScores && teamScoreIsProvided != opponentScoreIsProvided)
+        {
+            return UpdateActivityResult.Failure(["Les deux scores doivent être renseignés ensemble."]);
+        }
+
+        if (activityTypeRequiresScores && (request.TeamScore < 0 || request.OpponentScore < 0))
+        {
+            return UpdateActivityResult.Failure(["Les scores ne peuvent pas être négatifs."]);
+        }
+
+        if (activityTypeRequiresScores && activity.Status == ActivityStatus.Completed && !teamScoreIsProvided)
+        {
+            return UpdateActivityResult.Failure(["Les deux scores sont obligatoires pour une activité terminée."]);
+        }
+
+        if (!activityTypeRequiresScores && (!string.IsNullOrWhiteSpace(request.OpponentName) || teamScoreIsProvided || opponentScoreIsProvided))
+        {
+            return UpdateActivityResult.Failure(["L’adversaire et les scores sont disponibles uniquement pour une pracc ou un match officiel."]);
         }
 
         TimeZoneInfo timeZone;
@@ -329,6 +359,20 @@ public sealed class ActivityEditingService : IActivityEditingService
             activity.ChangeType(activityType, updatedAtUtc);
             activity.Reschedule(plannedStartUtc, plannedEndUtc, access.TimeZoneId, updatedAtUtc);
             activity.UpdateTexts(request.Subtitle, request.Description, request.Report, updatedAtUtc);
+
+            if (activity.RequiresScores)
+            {
+                activity.UpdateOpponent(request.OpponentName, updatedAtUtc);
+
+                if (request.TeamScore.HasValue && request.OpponentScore.HasValue)
+                {
+                    activity.SetScores(request.TeamScore.Value, request.OpponentScore.Value, updatedAtUtc);
+                }
+                else
+                {
+                    activity.ClearScores(updatedAtUtc);
+                }
+            }
 
             if (previousMatchDetail is not null && activity.MatchDetail is null)
             {

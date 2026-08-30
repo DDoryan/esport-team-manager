@@ -47,11 +47,19 @@ public sealed class EditActivityViewModel
 
     public string? CancellationReason { get; set; }
 
+    [StringLength(100, ErrorMessage = "Le nom de l’équipe adverse ne peut pas dépasser 100 caractères.")]
+    [Display(Name = "Équipe adverse")]
     public string? OpponentName { get; set; }
 
+    [Range(0, int.MaxValue, ErrorMessage = "Le score de l’équipe doit être positif ou nul.")]
+    [Display(Name = "Score de l’équipe")]
     public int? TeamScore { get; set; }
 
+    [Range(0, int.MaxValue, ErrorMessage = "Le score adverse doit être positif ou nul.")]
+    [Display(Name = "Score adverse")]
     public int? OpponentScore { get; set; }
+
+    public MatchResult? Result { get; set; }
 
     public DateTimeOffset UpdatedAtUtc { get; set; }
 

@@ -24,7 +24,13 @@ public sealed class UpdateActivityRequest
 
     public IReadOnlyCollection<UpdateActivityLinkRequest> Links { get; }
 
-    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links)
+    public string? OpponentName { get; }
+
+    public int? TeamScore { get; }
+
+    public int? OpponentScore { get; }
+
+    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links, string? opponentName = null, int? teamScore = null, int? opponentScore = null)
     {
         ArgumentNullException.ThrowIfNull(participants);
         ArgumentNullException.ThrowIfNull(links);
@@ -40,5 +46,8 @@ public sealed class UpdateActivityRequest
         Report = report;
         Participants = participants.ToArray();
         Links = links.ToArray();
+        OpponentName = opponentName;
+        TeamScore = teamScore;
+        OpponentScore = opponentScore;
     }
 }

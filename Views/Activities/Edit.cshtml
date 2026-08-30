@@ -14,16 +14,14 @@
         "Annulée" => "activity-status-cancelled",
         _ => string.Empty
     };
-    string resultLabel = "Non disponible";
 
-    if (Model.TeamScore.HasValue && Model.OpponentScore.HasValue)
+    string resultLabel = Model.Result switch
     {
-        resultLabel = Model.TeamScore.Value > Model.OpponentScore.Value
-            ? "Victoire"
-            : Model.TeamScore.Value < Model.OpponentScore.Value
-                ? "Défaite"
-                : "Égalité";
-    }
+        MatchResult.Victory => "Victoire",
+        MatchResult.Defeat => "Défaite",
+        MatchResult.Draw => "Égalité",
+        _ => "Non disponible"
+    };
 }
 
 <section class="activity-edit-page app-scroll-region" aria-labelledby="activity-edit-title">
@@ -52,7 +50,8 @@
           asp-controller="Activities"
           asp-action="Edit"
           method="post"
-          data-can-edit="@Model.CanEdit.ToString().ToLowerInvariant()">
+          data-can-edit="@Model.CanEdit.ToString().ToLowerInvariant()"
+          data-activity-is-completed="@((Model.Status == ActivityStatus.Completed).ToString().ToLowerInvariant())">
         <input asp-for="TeamId" type="hidden" />
         <input asp-for="ActivityId" type="hidden" />
 
@@ -180,24 +179,80 @@
                 <h2 id="activity-match-title" class="activity-edit-section-title">Match</h2>
 
                 <div class="activity-edit-grid activity-edit-grid-four-columns">
-                    <div class="activity-edit-readonly-field">
-                        <span class="activity-edit-field-label">Équipe adverse</span>
-                        <span>@(Model.OpponentName ?? "Non renseignée")</span>
+                    <div class="activity-edit-field">
+                        <label asp-for="OpponentName" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="OpponentName"
+                                   class="form-control activity-edit-control"
+                                   maxlength="100"
+                                   placeholder="Obligatoire"
+                                   required="@matchSectionIsVisible"
+                                   disabled="@(!matchSectionIsVisible)"
+                                   data-activity-match-input
+                                   data-activity-opponent-input
+                                   data-msg-required="L’équipe adverse est obligatoire pour une pracc ou un match officiel." />
+
+                            <span asp-validation-for="OpponentName" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">@(Model.OpponentName ?? "Non renseignée")</div>
+                        }
                     </div>
 
-                    <div class="activity-edit-readonly-field">
-                        <span class="activity-edit-field-label">Score de @Model.TeamName</span>
-                        <span>@(Model.TeamScore?.ToString() ?? "—")</span>
+                    <div class="activity-edit-field">
+                        <label asp-for="TeamScore" class="activity-edit-field-label">Score de @Model.TeamName</label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="TeamScore"
+                                   class="form-control activity-edit-control"
+                                   type="number"
+                                   min="0"
+                                   step="1"
+                                   required="@(matchSectionIsVisible && Model.Status == ActivityStatus.Completed)"
+                                   disabled="@(!matchSectionIsVisible)"
+                                   data-activity-match-input
+                                   data-activity-score-input
+                                   data-msg-required="Les deux scores sont obligatoires." />
+
+                            <span asp-validation-for="TeamScore" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">@(Model.TeamScore?.ToString() ?? "—")</div>
+                        }
                     </div>
 
-                    <div class="activity-edit-readonly-field">
-                        <span class="activity-edit-field-label">Score adverse</span>
-                        <span>@(Model.OpponentScore?.ToString() ?? "—")</span>
+                    <div class="activity-edit-field">
+                        <label asp-for="OpponentScore" class="activity-edit-field-label"></label>
+
+                        @if (Model.CanEdit)
+                        {
+                            <input asp-for="OpponentScore"
+                                   class="form-control activity-edit-control"
+                                   type="number"
+                                   min="0"
+                                   step="1"
+                                   required="@(matchSectionIsVisible && Model.Status == ActivityStatus.Completed)"
+                                   disabled="@(!matchSectionIsVisible)"
+                                   data-activity-match-input
+                                   data-activity-score-input
+                                   data-msg-required="Les deux scores sont obligatoires." />
+
+                            <span asp-validation-for="OpponentScore" class="text-danger"></span>
+                        }
+                        else
+                        {
+                            <div class="activity-edit-readonly-value">@(Model.OpponentScore?.ToString() ?? "—")</div>
+                        }
                     </div>
 
                     <div class="activity-edit-readonly-field">
                         <span class="activity-edit-field-label">Résultat calculé</span>
-                        <span>@resultLabel</span>
+                        <span data-activity-result-label>@resultLabel</span>
                     </div>
                 </div>
             </section>

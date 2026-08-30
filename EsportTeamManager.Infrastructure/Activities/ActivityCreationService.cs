@@ -166,6 +166,18 @@ public sealed class ActivityCreationService : IActivityCreationService
             return CreateActivityResult.Failure(["Le type d’activité sélectionné n’est pas disponible pour cette équipe."]);
         }
 
+        bool activityTypeRequiresOpponent = activityType.Code is "Pracc" or "OfficialMatch";
+
+        if (activityTypeRequiresOpponent && string.IsNullOrWhiteSpace(request.OpponentName))
+        {
+            return CreateActivityResult.Failure(["L’équipe adverse est obligatoire pour une pracc ou un match officiel."]);
+        }
+
+        if (!activityTypeRequiresOpponent && !string.IsNullOrWhiteSpace(request.OpponentName))
+        {
+            return CreateActivityResult.Failure(["L’équipe adverse est disponible uniquement pour une pracc ou un match officiel."]);
+        }
+
         TimeZoneInfo timeZone;
 
         try
@@ -225,10 +237,6 @@ public sealed class ActivityCreationService : IActivityCreationService
             if (activity.RequiresScores)
             {
                 activity.UpdateOpponent(request.OpponentName, utcNow);
-            }
-            else if (!string.IsNullOrWhiteSpace(request.OpponentName))
-            {
-                return CreateActivityResult.Failure(["L’équipe adverse est disponible uniquement pour une pracc ou un match officiel."]);
             }
 
             foreach (CreateActivityLinkRequest link in request.Links)

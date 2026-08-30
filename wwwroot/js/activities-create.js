@@ -131,6 +131,7 @@ function updateActivityOpponentField()
 
     activityOpponentField.hidden = !opponentFieldMustBeVisible;
     activityOpponentNameInput.disabled = !opponentFieldMustBeVisible;
+    activityOpponentNameInput.required = opponentFieldMustBeVisible;
 
     if (!opponentFieldMustBeVisible)
     {

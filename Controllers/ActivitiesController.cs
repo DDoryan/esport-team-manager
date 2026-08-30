@@ -103,6 +103,14 @@ public class ActivitiesController : Controller
             return Forbid();
         }
 
+        ActivityTypeOption? selectedActivityType = options.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == model.ActivityTypeId);
+        bool selectedActivityTypeRequiresOpponent = selectedActivityType?.Code is "Pracc" or "OfficialMatch";
+
+        if (selectedActivityTypeRequiresOpponent && string.IsNullOrWhiteSpace(model.OpponentName))
+        {
+            ModelState.AddModelError(nameof(model.OpponentName), "L’équipe adverse est obligatoire pour une pracc ou un match officiel.");
+        }
+
         if (model.ParticipantMembershipIds is null || model.ParticipantMembershipIds.Count == 0)
         {
             ModelState.AddModelError(nameof(model.ParticipantMembershipIds), "Sélectionnez au moins un participant.");
@@ -228,6 +236,28 @@ public class ActivitiesController : Controller
             return Forbid();
         }
 
+        ActivityTypeOption? selectedActivityType = details.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == model.ActivityTypeId);
+        bool selectedActivityTypeRequiresScores = selectedActivityType?.Code is "Pracc" or "OfficialMatch";
+        bool teamScoreIsProvided = model.TeamScore.HasValue;
+        bool opponentScoreIsProvided = model.OpponentScore.HasValue;
+
+        if (selectedActivityTypeRequiresScores && string.IsNullOrWhiteSpace(model.OpponentName))
+        {
+            ModelState.AddModelError(nameof(model.OpponentName), "L’équipe adverse est obligatoire pour une pracc ou un match officiel.");
+        }
+
+        if (selectedActivityTypeRequiresScores && teamScoreIsProvided != opponentScoreIsProvided)
+        {
+            ModelState.AddModelError(nameof(model.TeamScore), "Les deux scores doivent être renseignés ensemble.");
+            ModelState.AddModelError(nameof(model.OpponentScore), "Les deux scores doivent être renseignés ensemble.");
+        }
+
+        if (selectedActivityTypeRequiresScores && details.Status == ActivityStatus.Completed && !teamScoreIsProvided && !opponentScoreIsProvided)
+        {
+            ModelState.AddModelError(nameof(model.TeamScore), "Les deux scores sont obligatoires pour une activité terminée.");
+            ModelState.AddModelError(nameof(model.OpponentScore), "Les deux scores sont obligatoires pour une activité terminée.");
+        }
+
         if (model.PlannedStartLocal.HasValue && model.PlannedEndLocal.HasValue && model.PlannedEndLocal.Value <= model.PlannedStartLocal.Value)
         {
             ModelState.AddModelError(nameof(model.PlannedEndLocal), "La fin prévue doit être strictement postérieure au début prévu.");
@@ -273,7 +303,10 @@ public class ActivitiesController : Controller
             model.Description,
             model.Report,
             participants,
-            links);
+            links,
+            model.OpponentName,
+            model.TeamScore,
+            model.OpponentScore);
         UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
 
         if (!result.Succeeded)
@@ -385,9 +418,6 @@ public class ActivitiesController : Controller
         viewModel.StatusLabel = CreateStatusLabel(details.Status);
         viewModel.Status = details.Status;
         viewModel.CancellationReason = details.CancellationReason;
-        viewModel.OpponentName = details.OpponentName;
-        viewModel.TeamScore = details.TeamScore;
-        viewModel.OpponentScore = details.OpponentScore;
         viewModel.UpdatedAtUtc = details.UpdatedAtUtc;
         viewModel.CanEdit = details.CanEdit;
         viewModel.ActivityTypes = details.ActivityTypes
@@ -425,16 +455,38 @@ public class ActivitiesController : Controller
             viewModel.PlannedEndLocal = details.PlannedEndLocal;
             viewModel.Description = details.Description;
             viewModel.Report = details.Report;
+            viewModel.OpponentName = details.OpponentName;
+            viewModel.TeamScore = details.TeamScore;
+            viewModel.OpponentScore = details.OpponentScore;
             viewModel.Links = details.Links
                 .Select(link => new ActivityEditLinkViewModel(link.ActivityLinkId, link.Name, link.Url))
                 .ToList();
         }
+
+        viewModel.Result = initializeEditableValues
+            ? details.Result
+            : CalculateMatchResult(viewModel.TeamScore, viewModel.OpponentScore);
 
         ActivityTypeOptionViewModel? selectedActivityType = viewModel.ActivityTypes.SingleOrDefault(activityType => activityType.ActivityTypeId == viewModel.ActivityTypeId);
         viewModel.TypeCode = selectedActivityType?.Code ?? details.TypeCode;
         viewModel.TypeLabel = selectedActivityType?.Label ?? details.TypeLabel;
 
         return viewModel;
+    }
+
+    private static MatchResult? CalculateMatchResult(int? teamScore, int? opponentScore)
+    {
+        if (!teamScore.HasValue || !opponentScore.HasValue)
+        {
+            return null;
+        }
+
+        if (teamScore.Value > opponentScore.Value)
+        {
+            return MatchResult.Victory;
+        }
+
+        return teamScore.Value < opponentScore.Value ? MatchResult.Defeat : MatchResult.Draw;
     }
 
     private static string CreateStatusLabel(ActivityStatus status)

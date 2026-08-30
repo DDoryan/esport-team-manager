@@ -21,5 +21,6 @@ public sealed class MatchDetailConfiguration : IEntityTypeConfiguration<MatchDet
         builder.Property(matchDetail => matchDetail.OpponentName).HasMaxLength(100);
 
         builder.Ignore(matchDetail => matchDetail.HasCompleteScore);
+        builder.Ignore(matchDetail => matchDetail.Result);
     }
 }
