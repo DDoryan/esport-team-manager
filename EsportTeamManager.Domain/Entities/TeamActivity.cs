@@ -162,32 +162,30 @@ public class TeamActivity
             throw new DomainException("Only a planned activity can be completed.");
         }
 
-        if (attendanceByMembershipId is null || attendanceByMembershipId.Count != _participants.Count)
-        {
-            throw new DomainException("Attendance must be provided for every activity participant.");
-        }
-
-        foreach (ActivityParticipant participant in _participants)
-        {
-            if (!attendanceByMembershipId.TryGetValue(participant.TeamMembershipId, out Attendance attendance) || !Enum.IsDefined(typeof(Attendance), attendance))
-            {
-                throw new DomainException("Attendance must be provided for every activity participant.");
-            }
-        }
+        ValidateAttendances(attendanceByMembershipId);
 
         if (RequiresScores)
         {
             MatchDetail!.EnsureReadyForCompletion();
         }
 
-        foreach (ActivityParticipant participant in _participants)
-        {
-            participant.MarkAttendance(attendanceByMembershipId[participant.TeamMembershipId]);
-        }
+        ApplyAttendances(attendanceByMembershipId);
 
         Status = ActivityStatus.Completed;
         CancellationReason = null;
         Touch(completedAtUtc);
+    }
+
+    public void UpdateAttendances(IReadOnlyDictionary<Guid, Attendance> attendanceByMembershipId, DateTimeOffset updatedAtUtc)
+    {
+        if (Status != ActivityStatus.Completed)
+        {
+            throw new DomainException("Attendance can only be corrected on a completed activity.");
+        }
+
+        ValidateAttendances(attendanceByMembershipId);
+        ApplyAttendances(attendanceByMembershipId);
+        Touch(updatedAtUtc);
     }
 
     public void UpdateAttendance(Guid teamMembershipId, Attendance attendance, DateTimeOffset updatedAtUtc)
@@ -275,33 +273,82 @@ public class TeamActivity
             throw new DomainException("Participant membership identifiers cannot be empty.");
         }
 
-        if (Status == ActivityStatus.Completed && (attendanceByMembershipId is null || attendanceByMembershipId.Count != identifiers.Count))
+        if (Status == ActivityStatus.Completed)
         {
-            throw new DomainException("Attendance must be provided for every participant of a completed activity.");
-        }
+            if (attendanceByMembershipId is null || attendanceByMembershipId.Count != identifiers.Count)
+            {
+                throw new DomainException("Attendance must be provided for every participant of a completed activity.");
+            }
 
-        if (Status != ActivityStatus.Completed && attendanceByMembershipId is not null)
+            foreach (Guid identifier in identifiers)
+            {
+                if (!attendanceByMembershipId.TryGetValue(identifier, out Attendance attendance) || !Enum.IsDefined(typeof(Attendance), attendance))
+                {
+                    throw new DomainException("Attendance must be provided for every participant.");
+                }
+            }
+        }
+        else if (attendanceByMembershipId is not null)
         {
             throw new DomainException("A planned activity cannot store attendance.");
         }
 
-        _participants.Clear();
+        HashSet<Guid> requestedIdentifiers = identifiers.ToHashSet();
+        ActivityParticipant[] removedParticipants = _participants
+            .Where(participant => !requestedIdentifiers.Contains(participant.TeamMembershipId))
+            .ToArray();
+
+        foreach (ActivityParticipant removedParticipant in removedParticipants)
+        {
+            _participants.Remove(removedParticipant);
+        }
+
+        HashSet<Guid> existingIdentifiers = _participants
+            .Select(participant => participant.TeamMembershipId)
+            .ToHashSet();
 
         foreach (Guid identifier in identifiers)
         {
-            ActivityParticipant participant = new(ActivityId, identifier);
-
-            if (attendanceByMembershipId is not null)
+            if (!existingIdentifiers.Contains(identifier))
             {
-                if (!attendanceByMembershipId.TryGetValue(identifier, out Attendance attendance))
-                {
-                    throw new DomainException("Attendance must be provided for every participant.");
-                }
-
-                participant.MarkAttendance(attendance);
+                _participants.Add(new ActivityParticipant(ActivityId, identifier));
             }
+        }
 
-            _participants.Add(participant);
+        foreach (ActivityParticipant participant in _participants)
+        {
+            if (attendanceByMembershipId is null)
+            {
+                participant.ClearAttendance();
+            }
+            else
+            {
+                participant.MarkAttendance(attendanceByMembershipId[participant.TeamMembershipId]);
+            }
+        }
+    }
+
+    private void ValidateAttendances(IReadOnlyDictionary<Guid, Attendance>? attendanceByMembershipId)
+    {
+        if (attendanceByMembershipId is null || attendanceByMembershipId.Count != _participants.Count)
+        {
+            throw new DomainException("Attendance must be provided for every activity participant.");
+        }
+
+        foreach (ActivityParticipant participant in _participants)
+        {
+            if (!attendanceByMembershipId.TryGetValue(participant.TeamMembershipId, out Attendance attendance) || !Enum.IsDefined(typeof(Attendance), attendance))
+            {
+                throw new DomainException("Attendance must be provided for every activity participant.");
+            }
+        }
+    }
+
+    private void ApplyAttendances(IReadOnlyDictionary<Guid, Attendance> attendanceByMembershipId)
+    {
+        foreach (ActivityParticipant participant in _participants)
+        {
+            participant.MarkAttendance(attendanceByMembershipId[participant.TeamMembershipId]);
         }
     }
 

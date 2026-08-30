@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using EsportTeamManager.Domain.Enums;
 
 namespace RepriseWeb.ViewModels.Activities;
 
@@ -42,6 +43,8 @@ public sealed class EditActivityViewModel
 
     public string StatusLabel { get; set; } = string.Empty;
 
+    public ActivityStatus Status { get; set; }
+
     public string? CancellationReason { get; set; }
 
     public string? OpponentName { get; set; }
@@ -56,7 +59,7 @@ public sealed class EditActivityViewModel
 
     public IReadOnlyCollection<ActivityTypeOptionViewModel> ActivityTypes { get; set; } = Array.Empty<ActivityTypeOptionViewModel>();
 
-    public IReadOnlyCollection<ActivityEditParticipantViewModel> Participants { get; set; } = Array.Empty<ActivityEditParticipantViewModel>();
+    public List<ActivityEditParticipantViewModel> Participants { get; set; } = [];
 
     public List<ActivityEditLinkViewModel> Links { get; set; } = [];
 }

@@ -20,10 +20,13 @@ public sealed class UpdateActivityRequest
 
     public string? Report { get; }
 
+    public IReadOnlyCollection<UpdateActivityParticipantRequest> Participants { get; }
+
     public IReadOnlyCollection<UpdateActivityLinkRequest> Links { get; }
 
-    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityLinkRequest> links)
+    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links)
     {
+        ArgumentNullException.ThrowIfNull(participants);
         ArgumentNullException.ThrowIfNull(links);
 
         UserId = userId;
@@ -35,6 +38,7 @@ public sealed class UpdateActivityRequest
         Subtitle = subtitle;
         Description = description;
         Report = report;
+        Participants = participants.ToArray();
         Links = links.ToArray();
     }
 }

@@ -418,6 +418,12 @@ a:focus-visible
     font-weight: 400;
 }
 
+.activity-link-remove-column
+{
+    display: flex;
+    justify-content: flex-end;
+}
+
 .team-create-panel 
 {
     max-width: 65rem;
@@ -1711,20 +1717,65 @@ select.activity-edit-control option
     flex-direction: column;
 }
 
+.activity-edit-participant-column-headers,
 .activity-edit-participant
 {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7rem 7rem;
     gap: 1rem;
-    min-height: 3.25rem;
-    padding-block: 0.75rem;
     align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--app-border);
 }
 
-.activity-edit-participant:first-child
+.activity-edit-participant-column-headers,
+.activity-edit-link-column-headers
 {
-    padding-top: 0;
+    padding-bottom: 0.5rem;
+    color: var(--app-text-muted);
+    border-bottom: 1px solid var(--app-border);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.activity-edit-participant-column-headers
+{
+    align-items: start;
+}
+
+.activity-edit-participant-column-heading
+{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+}
+
+.activity-edit-participant-header-control
+{
+    display: flex;
+    justify-content: center;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+.activity-edit-participant-header-control .form-check-input
+{
+    float: none;
+    margin: 0;
+}
+
+.activity-edit-participant-column-headers span:nth-child(2),
+.activity-edit-participant-column-headers span:nth-child(3)
+{
+    text-align: center;
+}
+
+.activity-edit-participant
+{
+    min-height: 3.25rem;
+    padding-block: 0.75rem;
+    border-bottom: 1px solid var(--app-border);
 }
 
 .activity-edit-participant:last-child
@@ -1733,24 +1784,51 @@ select.activity-edit-control option
     border-bottom: 0;
 }
 
+.activity-edit-participant-identity
+{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+    align-items: center;
+}
+
 .activity-edit-participant-name
 {
-    margin-right: 0.75rem;
+    min-width: 0;
     color: var(--app-text);
+    overflow-wrap: anywhere;
     font-weight: 700;
 }
 
-.activity-edit-attendance
+.activity-edit-participant-control
 {
-    flex: 0 0 auto;
+    display: flex;
+    margin: 0;
+    padding-left: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.activity-edit-participant-control .form-check-input
+{
+    float: none;
+    margin: 0;
+}
+
+.activity-edit-participant-value
+{
     color: var(--app-text-muted);
+    text-align: center;
     font-weight: 600;
 }
 
-.activity-edit-link-list
+.activity-edit-participant-global-actions
 {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
 }
 
 .activity-edit-link
@@ -1818,10 +1896,29 @@ select.activity-edit-control option
         flex-direction: column;
     }
 
+    .activity-edit-participant-column-headers,
     .activity-edit-participant
     {
-        align-items: flex-start;
-        flex-direction: column;
+        grid-template-columns: minmax(0, 1fr) 4.25rem 4.25rem;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .activity-edit-participant-column-headers
+    {
+        font-size: 0.75rem;
+    }
+
+    .activity-edit-participant-global-actions
+    {
+        width: 100%;
+        gap: 0.75rem 1.25rem;
+        justify-content: flex-start;
+    }
+
+    .activity-edit-participant-control
+    {
+        align-self: flex-start;
     }
 
     .activity-edit-link

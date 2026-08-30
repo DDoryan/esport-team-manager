@@ -95,45 +95,89 @@ public sealed class ActivityEditingService : IActivityEditingService
             .Select(activityType => new ActivityTypeOption(activityType.ActivityTypeId, activityType.Code, activityType.Label))
             .ToListAsync(cancellationToken);
 
-        var participantData = await _context.ActivityParticipants
+        Dictionary<Guid, Attendance?> existingParticipants = await _context.ActivityParticipants
             .AsNoTracking()
             .Where(participant => participant.ActivityId == activityId)
-            .Join(_context.TeamMemberships, participant => participant.TeamMembershipId, membership => membership.TeamMembershipId, (participant, membership) => new
+            .ToDictionaryAsync(participant => participant.TeamMembershipId, participant => participant.Attendance, cancellationToken);
+
+        Guid[] existingParticipantIdentifiers = existingParticipants.Keys.ToArray();
+        bool canEdit = activity.Status != ActivityStatus.Cancelled && (access.OwnerUserId == userId || access.RoleCode == ManagerRoleCode || access.RoleCode == CoachRoleCode);
+        bool includeMembershipOptions = canEdit && activity.Status is ActivityStatus.Planned or ActivityStatus.Completed;
+        DateTimeOffset plannedStartUtc = activity.PlannedStartUtc;
+
+        List<TeamMembership> teamMembershipCandidates = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == teamId)
+            .ToListAsync(cancellationToken);
+
+        Guid[] visibleMembershipIdentifiers = teamMembershipCandidates
+            .Where(membership =>
+                existingParticipantIdentifiers.Contains(membership.TeamMembershipId)
+                || includeMembershipOptions
+                && (membership.Status == MembershipStatus.Active && membership.UserId.HasValue
+                    || activity.Status == ActivityStatus.Completed
+                    && membership.JoinedAtUtc <= plannedStartUtc
+                    && (!membership.LeftAtUtc.HasValue || membership.LeftAtUtc.Value >= plannedStartUtc)))
+            .Select(membership => membership.TeamMembershipId)
+            .ToArray();
+
+        var participantMemberships = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => visibleMembershipIdentifiers.Contains(membership.TeamMembershipId))
+            .Join(_context.TeamRoles, membership => membership.TeamRoleId, role => role.TeamRoleId, (membership, role) => new
             {
-                Participant = participant,
-                Membership = membership
-            })
-            .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new
-            {
-                item.Participant,
-                item.Membership,
+                Membership = membership,
                 RoleLabel = role.Label
             })
-            .GroupJoin(_context.Users, item => item.Membership.UserId, user => user.Id, (item, users) => new
+            .GroupJoin(_context.Users, item => item.Membership.UserId, user => (Guid?)user.Id, (item, users) => new
             {
-                item.Participant,
                 item.Membership,
                 item.RoleLabel,
                 Users = users
             })
             .SelectMany(item => item.Users.DefaultIfEmpty(), (item, user) => new
             {
-                item.Participant.TeamMembershipId,
-                DisplayName = user == null ? "Ancien membre" : user.UserName ?? "Ancien membre",
+                item.Membership,
                 item.RoleLabel,
-                IsOwner = item.Membership.UserId == access.OwnerUserId,
-                item.Participant.Attendance
+                User = user
             })
-            .OrderBy(item => item.DisplayName)
+            .GroupJoin(_context.FormerMembers, item => item.Membership.FormerMemberId, formerMember => (Guid?)formerMember.FormerMemberId, (item, formerMembers) => new
+            {
+                item.Membership,
+                item.RoleLabel,
+                item.User,
+                FormerMembers = formerMembers
+            })
+            .SelectMany(item => item.FormerMembers.DefaultIfEmpty(), (item, formerMember) => new
+            {
+                item.Membership,
+                item.RoleLabel,
+                item.User,
+                FormerMember = formerMember
+            })
             .ToListAsync(cancellationToken);
 
-        IReadOnlyCollection<ActivityEditParticipantSummary> participants = participantData
-            .Select(participant => new ActivityEditParticipantSummary(
-                participant.TeamMembershipId,
-                participant.DisplayName,
-                participant.RoleLabel,
-                participant.IsOwner,
-                participant.Attendance))
+        IReadOnlyCollection<ActivityEditParticipantSummary> participants = participantMemberships
+            .Select(item =>
+            {
+                string displayName = item.User is not null
+                    ? $"{item.User.Pseudo}#{item.User.Tag}"
+                    : item.FormerMember is not null
+                        ? $"Utilisateur supprimé {item.FormerMember.LocalNumber}"
+                        : "Ancien membre";
+
+                bool isSelected = existingParticipants.TryGetValue(item.Membership.TeamMembershipId, out Attendance? attendance);
+
+                return new ActivityEditParticipantSummary(
+                    item.Membership.TeamMembershipId,
+                    displayName,
+                    item.RoleLabel,
+                    item.Membership.UserId == access.OwnerUserId,
+                    isSelected,
+                    item.Membership.Status != MembershipStatus.Active,
+                    attendance);
+            })
+            .OrderBy(participant => participant.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
 
         IReadOnlyCollection<ActivityEditLinkSummary> links = await _context.ActivityLinks
@@ -143,7 +187,6 @@ public sealed class ActivityEditingService : IActivityEditingService
             .Select(link => new ActivityEditLinkSummary(link.ActivityLinkId, link.Name, link.Url))
             .ToListAsync(cancellationToken);
 
-        bool canEdit = activity.Status != ActivityStatus.Cancelled && (access.OwnerUserId == userId || access.RoleCode == ManagerRoleCode || access.RoleCode == CoachRoleCode);
         DateTime plannedStartLocal = TimeZoneInfo.ConvertTime(activity.PlannedStartUtc, timeZone).DateTime;
         DateTime plannedEndLocal = TimeZoneInfo.ConvertTime(activity.PlannedEndUtc, timeZone).DateTime;
 
@@ -211,6 +254,7 @@ public sealed class ActivityEditingService : IActivityEditingService
         TeamActivity? activity = await _context.TeamActivities
             .Include(item => item.ActivityType)
             .Include(item => item.MatchDetail)
+            .Include(item => item.Participants)
             .SingleOrDefaultAsync(item => item.ActivityId == request.ActivityId && item.TeamId == request.TeamId, cancellationToken);
 
         if (activity is null)
@@ -262,6 +306,15 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure(["La fin prévue doit être strictement postérieure au début prévu."]);
         }
 
+        DateTimeOffset updatedAtUtc = _timeProvider.GetUtcNow();
+
+        string? participantUpdateError = await UpdateParticipantsAsync(activity, request.TeamId, request.Participants, plannedStartUtc, updatedAtUtc, cancellationToken);
+
+        if (participantUpdateError is not null)
+        {
+            return UpdateActivityResult.Failure([participantUpdateError]);
+        }
+
         string? linkSynchronizationError = await SynchronizeLinksAsync(request.ActivityId, request.Links, cancellationToken);
 
         if (linkSynchronizationError is not null)
@@ -269,7 +322,6 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure([linkSynchronizationError]);
         }
 
-        DateTimeOffset updatedAtUtc = _timeProvider.GetUtcNow();
         MatchDetail? previousMatchDetail = activity.MatchDetail;
 
         try
@@ -308,6 +360,119 @@ public sealed class ActivityEditingService : IActivityEditingService
         }
 
         return UpdateActivityResult.Success();
+    }
+
+    private async Task<string?> UpdateParticipantsAsync(TeamActivity activity, Guid teamId, IReadOnlyCollection<UpdateActivityParticipantRequest> requestedParticipants, DateTimeOffset plannedStartUtc, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken)
+    {
+        if (requestedParticipants.Count == 0)
+        {
+            return "Sélectionnez au moins un participant.";
+        }
+
+        HashSet<Guid> requestedIdentifiers = [];
+
+        foreach (UpdateActivityParticipantRequest requestedParticipant in requestedParticipants)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (requestedParticipant.TeamMembershipId == Guid.Empty || !requestedIdentifiers.Add(requestedParticipant.TeamMembershipId))
+            {
+                return "La demande contient un identifiant de participant invalide ou répété.";
+            }
+        }
+
+        if (activity.Status == ActivityStatus.Cancelled)
+        {
+            return "Les participants d’une activité annulée ne peuvent pas être modifiés.";
+        }
+
+        UpdateActivityParticipantRequest[] selectedParticipants = requestedParticipants
+            .Where(participant => participant.IsSelected)
+            .ToArray();
+
+        if (selectedParticipants.Length == 0)
+        {
+            return "Sélectionnez au moins un participant.";
+        }
+
+        HashSet<Guid> selectedIdentifiers = selectedParticipants
+            .Select(participant => participant.TeamMembershipId)
+            .ToHashSet();
+
+        HashSet<Guid> existingIdentifiers = activity.Participants
+            .Select(participant => participant.TeamMembershipId)
+            .ToHashSet();
+
+        if (activity.Status == ActivityStatus.Planned)
+        {
+            if (requestedParticipants.Any(participant => participant.Attendance.HasValue))
+            {
+                return "Une activité planifiée ne peut pas contenir de présence.";
+            }
+
+            HashSet<Guid> activeMembershipIdentifiers = await _context.TeamMemberships
+                .AsNoTracking()
+                .Where(membership =>
+                    selectedIdentifiers.Contains(membership.TeamMembershipId)
+                    && membership.TeamId == teamId
+                    && membership.Status == MembershipStatus.Active
+                    && membership.UserId.HasValue)
+                .Select(membership => membership.TeamMembershipId)
+                .ToHashSetAsync(cancellationToken);
+
+            if (selectedIdentifiers.Any(identifier => !activeMembershipIdentifiers.Contains(identifier) && !existingIdentifiers.Contains(identifier)))
+            {
+                return "Un ou plusieurs participants ne sont pas membres actifs de cette équipe et ne sont pas déjà associés à l’activité.";
+            }
+
+            try
+            {
+                activity.ReplaceParticipants(selectedIdentifiers, updatedAtUtc);
+            }
+            catch (DomainException)
+            {
+                return "Les participants fournis ne permettent pas de modifier l’activité.";
+            }
+
+            return null;
+        }
+
+        List<TeamMembership> selectedMemberships = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => selectedIdentifiers.Contains(membership.TeamMembershipId) && membership.TeamId == teamId)
+            .ToListAsync(cancellationToken);
+
+                HashSet<Guid> eligibleCompletedMembershipIdentifiers = selectedMemberships
+                    .Where(membership =>
+                        membership.Status == MembershipStatus.Active && membership.UserId.HasValue
+                        || membership.JoinedAtUtc <= plannedStartUtc
+                        && (!membership.LeftAtUtc.HasValue || membership.LeftAtUtc.Value >= plannedStartUtc))
+                    .Select(membership => membership.TeamMembershipId)
+                    .ToHashSet();
+
+        if (selectedIdentifiers.Any(identifier => !eligibleCompletedMembershipIdentifiers.Contains(identifier) && !existingIdentifiers.Contains(identifier)))
+        {
+            return "Un ou plusieurs participants ne peuvent pas être associés à cette activité terminée.";
+        }
+
+        if (selectedParticipants.Any(participant => !participant.Attendance.HasValue || !Enum.IsDefined(typeof(Attendance), participant.Attendance.Value)))
+        {
+            return "Une présence doit être renseignée pour chaque participant inclus.";
+        }
+
+        Dictionary<Guid, Attendance> attendanceByMembershipId = selectedParticipants
+            .ToDictionary(participant => participant.TeamMembershipId, participant => participant.Attendance!.Value);
+
+        try
+        {
+            activity.ReplaceParticipants(selectedIdentifiers, updatedAtUtc, attendanceByMembershipId);
+        }
+        catch (DomainException)
+        {
+            return "Les participants et présences fournis ne permettent pas de modifier l’activité.";
+        }
+
+        return null;
     }
 
     private async Task<string?> SynchronizeLinksAsync(Guid activityId, IReadOnlyCollection<UpdateActivityLinkRequest> requestedLinks, CancellationToken cancellationToken)

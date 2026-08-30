@@ -2,22 +2,32 @@
 
 public sealed class ActivityEditParticipantViewModel
 {
-    public Guid TeamMembershipId { get; }
+    public Guid TeamMembershipId { get; set; }
 
-    public string DisplayName { get; }
+    public string DisplayName { get; set; } = string.Empty;
 
-    public string RoleLabel { get; }
+    public string RoleLabel { get; set; } = string.Empty;
 
-    public bool IsOwner { get; }
+    public bool IsOwner { get; set; }
 
-    public string AttendanceLabel { get; }
+    public bool IsSelected { get; set; }
 
-    public ActivityEditParticipantViewModel(Guid teamMembershipId, string displayName, string roleLabel, bool isOwner, string attendanceLabel)
+    public bool IsFormerMember { get; set; }
+
+    public bool IsPresent { get; set; }
+
+    public ActivityEditParticipantViewModel()
+    {
+    }
+
+    public ActivityEditParticipantViewModel(Guid teamMembershipId, string displayName, string roleLabel, bool isOwner, bool isSelected, bool isFormerMember, bool isPresent)
     {
         TeamMembershipId = teamMembershipId;
         DisplayName = displayName;
         RoleLabel = roleLabel;
         IsOwner = isOwner;
-        AttendanceLabel = attendanceLabel;
+        IsSelected = isSelected;
+        IsFormerMember = isFormerMember;
+        IsPresent = isPresent;
     }
 }
