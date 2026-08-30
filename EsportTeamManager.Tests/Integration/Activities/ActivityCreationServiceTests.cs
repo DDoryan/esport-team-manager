@@ -106,6 +106,40 @@ public sealed class ActivityCreationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenPraccHasNoOpponent_ReturnsFailureWithoutPersistence()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityCreationService activityCreationService = scope.ServiceProvider.GetRequiredService<IActivityCreationService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+
+        CreateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            1,
+            new DateTime(2026, 8, 23, 20, 0, 0),
+            new DateTime(2026, 8, 23, 22, 0, 0),
+            [team.OwnerMembershipId],
+            "Préparation tournoi",
+            "Préparation du prochain match officiel.");
+
+        CreateActivityResult result = await activityCreationService.CreateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.ActivityId);
+        Assert.Contains("L’équipe adverse est obligatoire pour une pracc ou un match officiel.", result.Errors);
+        Assert.Empty(await context.TeamActivities.AsNoTracking().ToListAsync());
+        Assert.Empty(await context.MatchDetails.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenLinkIsInvalid_DoesNotPersistPartialActivity()
     {
         await using SqliteTestDatabase database = new();
@@ -280,7 +314,8 @@ public sealed class ActivityCreationServiceTests
             new DateTime(2026, 8, 22, 20, 0, 0),
             [participantMembershipId],
             null,
-            null);
+            null,
+            "Opponent");
     }
 
     private static async Task<ApplicationUser> CreateUserAsync(UserManager<ApplicationUser> userManager, string email, string pseudo, string tag)

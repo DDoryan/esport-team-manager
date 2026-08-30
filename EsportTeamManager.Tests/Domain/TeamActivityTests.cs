@@ -147,6 +147,7 @@ namespace EsportTeamManager.Tests.Domain
             Guid participantMembershipId = Guid.NewGuid();
             ActivityType activityType = new ActivityType(1, "Pracc", "Pracc", true);
             TeamActivity activity = new TeamActivity(Guid.NewGuid(), Guid.NewGuid(), activityType, Guid.NewGuid(), startUtc, startUtc.AddHours(2), "Europe/Paris", [participantMembershipId], createdAtUtc);
+            activity.UpdateOpponent("Opponent", createdAtUtc.AddMinutes(5));
             Dictionary<Guid, Attendance> attendance = new Dictionary<Guid, Attendance>
             {
                 [participantMembershipId] = Attendance.Present
@@ -172,6 +173,7 @@ namespace EsportTeamManager.Tests.Domain
                 [participantMembershipId] = Attendance.Present
             };
 
+            activity.UpdateOpponent("Opponent", createdAtUtc.AddMinutes(5));
             activity.SetScores(13, 8, startUtc.AddHours(2));
             activity.Complete(attendance, startUtc.AddHours(2));
 

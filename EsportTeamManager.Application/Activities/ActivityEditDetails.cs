@@ -38,6 +38,8 @@ public sealed class ActivityEditDetails
 
     public int? OpponentScore { get; }
 
+    public MatchResult? Result { get; }
+
     public DateTimeOffset UpdatedAtUtc { get; }
 
     public bool CanEdit { get; }
@@ -48,7 +50,7 @@ public sealed class ActivityEditDetails
 
     public IReadOnlyCollection<ActivityEditLinkSummary> Links { get; }
 
-    public ActivityEditDetails(Guid activityId, Guid teamId, string teamName, string timeZoneId, int activityTypeId, string typeCode, string typeLabel, string? subtitle, DateTime plannedStartLocal, DateTime plannedEndLocal, string? description, string? report, ActivityStatus status, string? cancellationReason, string? opponentName, int? teamScore, int? opponentScore, DateTimeOffset updatedAtUtc, bool canEdit, IReadOnlyCollection<ActivityTypeOption> activityTypes, IReadOnlyCollection<ActivityEditParticipantSummary> participants, IReadOnlyCollection<ActivityEditLinkSummary> links)
+    public ActivityEditDetails(Guid activityId, Guid teamId, string teamName, string timeZoneId, int activityTypeId, string typeCode, string typeLabel, string? subtitle, DateTime plannedStartLocal, DateTime plannedEndLocal, string? description, string? report, ActivityStatus status, string? cancellationReason, string? opponentName, int? teamScore, int? opponentScore, DateTimeOffset updatedAtUtc, bool canEdit, IReadOnlyCollection<ActivityTypeOption> activityTypes, IReadOnlyCollection<ActivityEditParticipantSummary> participants, IReadOnlyCollection<ActivityEditLinkSummary> links, MatchResult? result = null)
     {
         ActivityId = activityId;
         TeamId = teamId;
@@ -67,6 +69,7 @@ public sealed class ActivityEditDetails
         OpponentName = opponentName;
         TeamScore = teamScore;
         OpponentScore = opponentScore;
+        Result = result;
         UpdatedAtUtc = updatedAtUtc;
         CanEdit = canEdit;
         ActivityTypes = activityTypes;

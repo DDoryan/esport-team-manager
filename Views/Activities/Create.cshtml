@@ -77,8 +77,10 @@
                                        id="activity-opponent-name"
                                        class="form-control"
                                        maxlength="100"
-                                       placeholder="Facultatif"
-                                       disabled="@(!opponentFieldIsVisible)" />
+                                       placeholder="Obligatoire"
+                                       required="@opponentFieldIsVisible"
+                                       disabled="@(!opponentFieldIsVisible)" 
+                                       data-msg-required="L’équipe adverse est obligatoire pour une pracc ou un match officiel." />
                                 <span asp-validation-for="OpponentName" class="text-danger"></span>
                             </div>
 

@@ -4,6 +4,11 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
 {
     const activityTypeSelect = activityEditForm.querySelector("[data-activity-type-select]");
     const activityMatchSection = activityEditForm.querySelector("[data-activity-match-section]");
+    const activityMatchInputs = activityEditForm.querySelectorAll("[data-activity-match-input]");
+    const activityOpponentInput = activityEditForm.querySelector("[data-activity-opponent-input]");
+    const activityScoreInputs = activityEditForm.querySelectorAll("[data-activity-score-input]");
+    const activityResultLabel = activityEditForm.querySelector("[data-activity-result-label]");
+    const activityIsCompleted = activityEditForm.dataset.activityIsCompleted === "true";
     const activityAddLinkButton = activityEditForm.querySelector("[data-add-activity-link]");
     const activityLinkList = activityEditForm.querySelector("[data-activity-link-list]");
     const activityLinkTemplate = document.getElementById("activity-edit-link-template");
@@ -30,6 +35,60 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
         const matchSectionIsVisible = selectedTypeCode === "Pracc" || selectedTypeCode === "OfficialMatch";
 
         activityMatchSection.hidden = !matchSectionIsVisible;
+
+        for (const matchInput of activityMatchInputs)
+        {
+            if (matchInput instanceof HTMLInputElement)
+            {
+                matchInput.disabled = !matchSectionIsVisible;
+            }
+        }
+
+        if (activityOpponentInput instanceof HTMLInputElement)
+        {
+            activityOpponentInput.required = matchSectionIsVisible;
+        }
+
+        const oneScoreIsProvided = Array.from(activityScoreInputs).some(scoreInput =>
+            scoreInput instanceof HTMLInputElement && scoreInput.value !== "");
+
+        for (const scoreInput of activityScoreInputs)
+        {
+            if (scoreInput instanceof HTMLInputElement)
+            {
+                scoreInput.required = matchSectionIsVisible && (activityIsCompleted || oneScoreIsProvided);
+            }
+        }
+
+        if (activityResultLabel !== null)
+        {
+            const scoreValues = Array.from(activityScoreInputs)
+                .filter(scoreInput => scoreInput instanceof HTMLInputElement)
+                .map(scoreInput => scoreInput.value);
+
+            if (!matchSectionIsVisible || scoreValues.length !== 2 || scoreValues.some(scoreValue => scoreValue === ""))
+            {
+                activityResultLabel.textContent = "Non disponible";
+
+                return;
+            }
+
+            const teamScore = Number(scoreValues[0]);
+            const opponentScore = Number(scoreValues[1]);
+
+            if (!Number.isInteger(teamScore) || !Number.isInteger(opponentScore) || teamScore < 0 || opponentScore < 0)
+            {
+                activityResultLabel.textContent = "Non disponible";
+
+                return;
+            }
+
+            activityResultLabel.textContent = teamScore > opponentScore
+                ? "Victoire"
+                : teamScore < opponentScore
+                    ? "Défaite"
+                    : "Égalité";
+        }
     }
 
     function focusFirstInvalidField()
@@ -264,6 +323,11 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
                 nameInput.focus();
             }
         });
+    }
+
+    for (const scoreInput of activityScoreInputs)
+    {
+        scoreInput.addEventListener("input", updateMatchSectionVisibility);
     }
 
     const initialFormSnapshot = createFormSnapshot();

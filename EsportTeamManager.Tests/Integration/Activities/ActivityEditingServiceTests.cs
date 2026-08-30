@@ -247,7 +247,10 @@ public sealed class ActivityEditingServiceTests
             "  Nouvelle description.  ",
             "  Nouveau compte rendu.  ",
             CreateParticipantRequests(team),
-            []);
+            [],
+            "  Navi  ",
+            13,
+            8);
 
         UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
 
@@ -270,8 +273,223 @@ public sealed class ActivityEditingServiceTests
         Assert.Equal(new DateTimeOffset(2026, 8, 25, 20, 0, 0, TimeSpan.Zero), updatedActivity.PlannedEndUtc);
         Assert.Equal("Europe/Paris", updatedActivity.TimeZoneId);
         Assert.Equal(new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero), updatedActivity.UpdatedAtUtc);
-        Assert.NotNull(updatedActivity.MatchDetail);
+        MatchDetail matchDetail = Assert.IsType<MatchDetail>(updatedActivity.MatchDetail);
+
+        Assert.Equal("Navi", matchDetail.OpponentName);
+        Assert.Equal(13, matchDetail.TeamScore);
+        Assert.Equal(8, matchDetail.OpponentScore);
+        Assert.Equal(MatchResult.Victory, matchDetail.Result);
+
+        ActivityEditDetails details = Assert.IsType<ActivityEditDetails>(await activityEditingService.GetAsync(owner.Id, team.TeamId, activityId));
+
+        Assert.Equal(MatchResult.Victory, details.Result);
     }
+
+    [Fact]
+    public async Task UpdateAsync_WhenPraccHasNoOpponent_ReturnsFailureWithoutModification()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 25, 20, 0, 0),
+            new DateTime(2026, 8, 25, 22, 0, 0),
+            "Préparation tournoi",
+            "Nouvelle description.",
+            "Nouveau compte rendu.",
+            CreateParticipantRequests(team),
+            []);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("L’équipe adverse est obligatoire pour une pracc ou un match officiel.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity unchangedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(activity => activity.ActivityType)
+            .Include(activity => activity.MatchDetail)
+            .SingleAsync(activity => activity.ActivityId == activityId);
+
+        Assert.Equal("Meeting", unchangedActivity.ActivityType.Code);
+        Assert.Null(unchangedActivity.MatchDetail);
+        Assert.Equal("Sous-titre initial", unchangedActivity.Subtitle);
+    }
+
+    [Theory]
+    [InlineData(13, null)]
+    [InlineData(null, 8)]
+    public async Task UpdateAsync_WhenOnlyOneScoreIsProvided_ReturnsFailureWithoutModification(int? teamScore, int? opponentScore)
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 25, 20, 0, 0),
+            new DateTime(2026, 8, 25, 22, 0, 0),
+            "Préparation tournoi",
+            "Nouvelle description.",
+            "Nouveau compte rendu.",
+            CreateParticipantRequests(team),
+            [],
+            "Navi",
+            teamScore,
+            opponentScore);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Les deux scores doivent être renseignés ensemble.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity unchangedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(activity => activity.ActivityType)
+            .Include(activity => activity.MatchDetail)
+            .SingleAsync(activity => activity.ActivityId == activityId);
+
+        Assert.Equal("Meeting", unchangedActivity.ActivityType.Code);
+        Assert.Null(unchangedActivity.MatchDetail);
+        Assert.Equal("Sous-titre initial", unchangedActivity.Subtitle);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedMatchScoresChange_UpdatesScoresAndResult()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreateCompletedMatchActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Match terminé",
+            "Description modifiée.",
+            "Compte rendu modifié.",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, Attendance.Present)
+            ],
+            [],
+            "  Fnatic  ",
+            10,
+            10);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        TeamActivity updatedActivity = await context.TeamActivities
+            .AsNoTracking()
+            .Include(activity => activity.MatchDetail)
+            .SingleAsync(activity => activity.ActivityId == activityId);
+
+        Assert.Equal(ActivityStatus.Completed, updatedActivity.Status);
+
+        MatchDetail matchDetail = Assert.IsType<MatchDetail>(updatedActivity.MatchDetail);
+
+        Assert.Equal("Fnatic", matchDetail.OpponentName);
+        Assert.Equal(10, matchDetail.TeamScore);
+        Assert.Equal(10, matchDetail.OpponentScore);
+        Assert.Equal(MatchResult.Draw, matchDetail.Result);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCompletedMatchHasNoScores_ReturnsFailureWithoutModification()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreateCompletedMatchActivityAsync(context, team);
+
+        UpdateActivityRequest request = new(
+            owner.Id,
+            team.TeamId,
+            activityId,
+            1,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Match terminé",
+            "Description modifiée.",
+            "Compte rendu modifié.",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, Attendance.Present)
+            ],
+            [],
+            "Navi");
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Les deux scores sont obligatoires pour une activité terminée.", result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        MatchDetail unchangedMatchDetail = await context.MatchDetails
+            .AsNoTracking()
+            .SingleAsync(matchDetail => matchDetail.ActivityId == activityId);
+
+        Assert.Equal("Navi", unchangedMatchDetail.OpponentName);
+        Assert.Equal(13, unchangedMatchDetail.TeamScore);
+        Assert.Equal(8, unchangedMatchDetail.OpponentScore);
+        Assert.Equal(MatchResult.Victory, unchangedMatchDetail.Result);
+    }
+
+
 
     [Theory]
     [InlineData("Manager")]
@@ -978,6 +1196,30 @@ public sealed class ActivityEditingServiceTests
             "Sous-titre initial",
             "Description initiale",
             "Compte rendu initial");
+
+        context.TeamActivities.Add(activity);
+        await context.SaveChangesAsync();
+
+        return activityId;
+    }
+
+    private static async Task<Guid> CreateCompletedMatchActivityAsync(ApplicationDbContext context, TeamSetup team)
+    {
+        ActivityType activityType = await context.ActivityTypes.SingleAsync(item => item.Code == "Pracc");
+        Guid activityId = Guid.NewGuid();
+        DateTimeOffset createdAtUtc = new(2026, 8, 23, 8, 0, 0, TimeSpan.Zero);
+        DateTimeOffset plannedStartUtc = new(2026, 8, 24, 16, 0, 0, TimeSpan.Zero);
+        DateTimeOffset plannedEndUtc = new(2026, 8, 24, 18, 0, 0, TimeSpan.Zero);
+        TeamActivity activity = new(activityId, team.TeamId, activityType, team.OwnerMembershipId, plannedStartUtc, plannedEndUtc, "Europe/Paris", [team.OwnerMembershipId], createdAtUtc, "Match terminé", "Description initiale", "Compte rendu initial");
+
+        activity.UpdateOpponent("Navi", createdAtUtc.AddMinutes(5));
+        activity.SetScores(13, 8, createdAtUtc.AddMinutes(10));
+        activity.Complete(
+            new Dictionary<Guid, Attendance>
+            {
+                [team.OwnerMembershipId] = Attendance.Present
+            },
+            plannedEndUtc);
 
         context.TeamActivities.Add(activity);
         await context.SaveChangesAsync();

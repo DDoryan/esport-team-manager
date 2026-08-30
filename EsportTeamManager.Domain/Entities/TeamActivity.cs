@@ -143,6 +143,7 @@ public class TeamActivity
 
     public void UpdateOpponent(string? opponentName, DateTimeOffset updatedAtUtc)
     {
+        EnsureNotCancelled();
         EnsureMatchActivity();
         MatchDetail!.UpdateOpponent(opponentName);
         Touch(updatedAtUtc);
@@ -150,8 +151,23 @@ public class TeamActivity
 
     public void SetScores(int teamScore, int opponentScore, DateTimeOffset updatedAtUtc)
     {
+        EnsureNotCancelled();
         EnsureMatchActivity();
         MatchDetail!.SetScores(teamScore, opponentScore);
+        Touch(updatedAtUtc);
+    }
+
+    public void ClearScores(DateTimeOffset updatedAtUtc)
+    {
+        EnsureNotCancelled();
+        EnsureMatchActivity();
+
+        if (Status == ActivityStatus.Completed)
+        {
+            throw new DomainException("The scores of a completed activity cannot be cleared.");
+        }
+
+        MatchDetail!.ClearScores();
         Touch(updatedAtUtc);
     }
 
