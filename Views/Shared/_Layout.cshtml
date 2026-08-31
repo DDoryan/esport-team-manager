@@ -80,25 +80,27 @@
         </nav>
     </header>
 
-    <div class="container app-shell">
-        <main id="main-content" class="app-main" role="main" tabindex="-1">
-            @if (TempData["SuccessMessage"] is string successMessage)
-            {
-                <div class="alert alert-success" role="status">@successMessage</div>
-            }
+    <div class="app-shell app-scroll-region">
+        <div class="container app-shell-content">
+            <main id="main-content" class="app-main" role="main" tabindex="-1">
+                @if (TempData["SuccessMessage"] is string successMessage)
+                {
+                    <div class="alert alert-success" role="status">@successMessage</div>
+                }
 
-            @if (TempData["WarningMessage"] is string warningMessage)
-            {
-                <div class="alert alert-warning" role="alert">@warningMessage</div>
-            }
+                @if (TempData["WarningMessage"] is string warningMessage)
+                {
+                    <div class="alert alert-warning" role="alert">@warningMessage</div>
+                }
 
-            @if (TempData["ErrorMessage"] is string errorMessage)
-            {
-                <div class="alert alert-danger" role="alert">@errorMessage</div>
-            }
+                @if (TempData["ErrorMessage"] is string errorMessage)
+                {
+                    <div class="alert alert-danger" role="alert">@errorMessage</div>
+                }
 
-            @RenderBody()
-        </main>
+                @RenderBody()
+            </main>
+        </div>
     </div>
 
     <footer class="app-footer">

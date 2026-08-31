@@ -10,11 +10,14 @@ public sealed class TeamNavigationViewModel
 
     public bool ManagementIsActive { get; }
 
-    public TeamNavigationViewModel(TeamNavigationItemViewModel? activeTeam, IReadOnlyCollection<TeamNavigationItemViewModel> teams, bool calendarIsActive, bool managementIsActive)
+    public bool StrategiesIsActive { get; }
+
+    public TeamNavigationViewModel(TeamNavigationItemViewModel? activeTeam, IReadOnlyCollection<TeamNavigationItemViewModel> teams, bool calendarIsActive, bool managementIsActive, bool strategiesIsActive)
     {
         ActiveTeam = activeTeam;
         Teams = teams;
         CalendarIsActive = calendarIsActive;
         ManagementIsActive = managementIsActive;
+        StrategiesIsActive = strategiesIsActive;
     }
 }

@@ -1,0 +1,224 @@
+﻿@using EsportTeamManager.Domain.Enums
+@using RepriseWeb.ViewModels.Strategies
+
+@model StrategyListViewModel
+
+@{
+    ViewData["Title"] = "Stratégies";
+}
+
+<section class="strategy-list-page" aria-labelledby="strategy-list-title">
+    <header class="strategy-list-header">
+        <div>
+            <h1 id="strategy-list-title" class="mb-2">Stratégies</h1>
+            <p class="text-body-secondary mb-0">
+                Tri par dernière modification : plus récente vers plus ancienne
+            </p>
+        </div>
+    </header>
+
+    <form class="strategy-filter-form"
+          method="get"
+          asp-controller="Strategies"
+          asp-action="Index"
+          data-strategy-filter-form>
+        <input type="hidden" name="teamId" value="@Model.TeamId" />
+        <input type="hidden" name="filtersSubmitted" value="true" />
+
+        <div class="strategy-filter-search">
+            <label for="strategy-search-text">Rechercher</label>
+            <input id="strategy-search-text"
+                   class="form-control"
+                   type="search"
+                   name="searchText"
+                   value="@Model.SearchText"
+                   maxlength="100"
+                   placeholder="Nom de la stratégie"
+                   autocomplete="off"
+                   data-strategy-search />
+        </div>
+
+        <div class="strategy-filter-map">
+            <label for="strategy-map">Carte</label>
+            <select id="strategy-map"
+                    class="form-select"
+                    name="mapId"
+                    data-strategy-filter-auto-submit>
+                <option value="" selected="@(!Model.SelectedMapId.HasValue)">
+                    Toutes les cartes
+                </option>
+
+                @foreach (StrategyMapOptionViewModel map in Model.Maps)
+                {
+                    <option value="@map.MapId"
+                            selected="@(Model.SelectedMapId == map.MapId)">
+                        @map.Name
+                    </option>
+                }
+            </select>
+        </div>
+
+        <fieldset class="strategy-filter-group">
+            <legend>Camp</legend>
+
+            <div class="strategy-filter-options">
+                <label class="team-calendar-filter calendar-filter-vod-review">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="sides"
+                           value="@StrategySide.Attack"
+                           checked="@Model.SelectedSides.Contains(StrategySide.Attack)"
+                           data-strategy-filter-auto-submit />
+
+                    <span class="team-calendar-filter-icon strategy-filter-sword-icon"
+                          aria-hidden="true">⚔</span>
+
+                    <span>Attaque</span>
+                </label>
+
+                <label class="team-calendar-filter strategy-filter-defense">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="sides"
+                           value="@StrategySide.Defense"
+                           checked="@Model.SelectedSides.Contains(StrategySide.Defense)"
+                           data-strategy-filter-auto-submit />
+
+                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                         viewBox="0 0 16 16"
+                         aria-hidden="true"
+                         focusable="false">
+                        <path fill="currentColor"
+                              d="M8 0 14 2.25v4.1c0 4.15-2.55 7.55-6 9.65-3.45-2.1-6-5.5-6-9.65v-4.1L8 0Zm0 2.05L4 3.55v2.8c0 3.05 1.7 5.7 4 7.45 2.3-1.75 4-4.4 4-7.45v-2.8L8 2.05Z" />
+                    </svg>
+
+                    <span>Défense</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="strategy-filter-group">
+            <legend>État</legend>
+
+            <div class="strategy-filter-options">
+                <label class="team-calendar-filter calendar-filter-completed">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="includeActive"
+                           value="true"
+                           checked="@Model.IncludeActive"
+                           data-strategy-filter-auto-submit />
+
+                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                         viewBox="0 0 16 16"
+                         aria-hidden="true"
+                         focusable="false">
+                        <path fill="none"
+                              stroke="currentColor"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M2.5 8.5 6.25 12 13.5 4" />
+                    </svg>
+
+                    <span>Actives</span>
+                </label>
+
+                <label class="team-calendar-filter calendar-filter-cancelled">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="includeInactive"
+                           value="true"
+                           checked="@Model.IncludeInactive"
+                           data-strategy-filter-auto-submit />
+
+                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                         viewBox="0 0 16 16"
+                         aria-hidden="true"
+                         focusable="false">
+                        <path fill="none"
+                              stroke="currentColor"
+                              stroke-linecap="round"
+                              stroke-width="2"
+                              d="M3 3 13 13M13 3 3 13" />
+                    </svg>
+
+                    <span>Inactives</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <a class="btn btn-outline-secondary strategy-filter-reset"
+           asp-controller="Strategies"
+           asp-action="Index"
+           asp-route-teamId="@Model.TeamId"
+           data-strategy-filter-reset>
+            Réinitialiser les filtres
+        </a>
+    </form>
+
+    <p class="visually-hidden"
+       role="status"
+       aria-live="polite"
+       data-strategy-filter-status></p>
+
+    <div class="strategy-list-results"
+         aria-live="polite"
+         aria-busy="false"
+         data-strategy-results>
+        @if (Model.Strategies.Count == 0)
+        {
+            <section class="strategy-empty-state" aria-labelledby="strategy-empty-title">
+                <div>
+                    <h2 id="strategy-empty-title" class="h4 mb-2">
+                        Aucune stratégie correspondante
+                    </h2>
+                    <p class="text-body-secondary mb-0">
+                        Modifiez les critères ou réinitialisez les filtres.
+                    </p>
+                </div>
+            </section>
+        }
+        else
+        {
+            <section class="strategy-card-grid"
+                     aria-label="Stratégies de l’équipe @Model.TeamName">
+                @foreach (StrategyCardViewModel strategy in Model.Strategies)
+                {
+                    <article class="strategy-card">
+                        <div class="strategy-card-thumbnail" aria-hidden="true">
+                            <i class="bi bi-diagram-3"></i>
+                            <span>@strategy.MapName</span>
+                        </div>
+
+                        <div class="strategy-card-body">
+                            <h2 class="strategy-card-title">
+                                @strategy.Name
+                            </h2>
+
+                            <p class="strategy-card-metadata">
+                                @strategy.MapName · @strategy.SideLabel
+                            </p>
+
+                            <div class="strategy-card-footer">
+                                <span class="strategy-status-badge @(strategy.IsActive ? "strategy-status-active" : "strategy-status-inactive")">
+                                    @strategy.StatusLabel
+                                </span>
+
+                                <time class="strategy-updated-date"
+                                      datetime="@strategy.UpdatedAtUtc.ToString("O")">
+                                    Modifiée le @strategy.UpdatedAtUtc.ToString("dd/MM/yyyy")
+                                </time>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </section>
+        }
+    </div>
+</section>
+
+@section Scripts
+{
+    <script src="~/js/strategies-list.js" asp-append-version="true" defer></script>
+}
