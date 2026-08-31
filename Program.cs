@@ -21,6 +21,8 @@ using EsportTeamManager.Application.Notifications;
 using EsportTeamManager.Infrastructure.Notifications;
 using EsportTeamManager.Application.Images;
 using EsportTeamManager.Infrastructure.Images;
+using EsportTeamManager.Application.Strategies;
+using EsportTeamManager.Infrastructure.Strategies;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -158,6 +160,7 @@ builder.Services.AddScoped<IPrivateImageService, PrivateImageService>();
 builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 builder.Services.AddScoped<IActivityEditingService, ActivityEditingService>();
+builder.Services.AddScoped<IMapCatalogService, MapCatalogService>();
 
 if (builder.Environment.IsProduction())
 {

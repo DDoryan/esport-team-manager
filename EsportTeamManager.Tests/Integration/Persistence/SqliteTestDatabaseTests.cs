@@ -26,6 +26,25 @@ public sealed class SqliteTestDatabaseTests
     }
 
     [Fact]
+    public async Task InitializeAsync_WhenCalledTwice_KeepsReferenceDataIdempotent()
+    {
+        await using SqliteTestDatabase database = new();
+
+        await database.InitializeAsync();
+        await database.InitializeAsync();
+
+        await using ApplicationDbContext context = database.CreateContext();
+
+        List<Map> maps = await context.Maps
+            .AsNoTracking()
+            .ToListAsync();
+
+        Assert.Equal(13, maps.Count);
+        Assert.Equal(13, maps.Select(map => map.MapId).Distinct().Count());
+        Assert.Equal(13, maps.Select(map => map.Name).Distinct().Count());
+    }
+
+    [Fact]
     public async Task TwoDatabases_WhenInitialized_AreIsolated()
     {
         await using SqliteTestDatabase firstDatabase = new();

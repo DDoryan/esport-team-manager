@@ -2,7 +2,7 @@
 
 namespace EsportTeamManager.Domain.Entities;
 
-public class Map
+public sealed class Map
 {
     public int MapId { get; private set; }
 
