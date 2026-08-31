@@ -4,14 +4,14 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 
 ## État du projet
 
-- **Jalon atteint :** P0 terminé le 23 août 2026.
-- **Version de référence :** release GitHub de préversion `v0.1.0-p0`, publiée sur le commit vérifié `ab326f6` après la clôture documentaire.
+- **Jalons atteints :** P0 terminé le 23 août 2026 ; socle Activités terminé le 30 août 2026.
+- **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, puis préversion `v0.2.0-socle-activites` sur le commit vérifié `915cc1e`.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** ACT-004 le 29 août 2026, en 4 h pour 4 h estimées.
-- **Avancement :** 35 éléments terminés sur 60 et 120 h estimées restantes.
-- **Validation :** syntaxe JavaScript valide, compilation réussie, 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions, PR #41 fusionnée, CI de branche #125 et CI `master` #127 réussies, sauvegarde PostgreSQL vérifiée, workflow de production #15, Railway actif, journaux ciblés sans erreur, `/health` `Healthy` et smoke test du calendrier réussi.
-- **Prochain ticket :** ACT-008 — Ajouter plusieurs liens à une activité.
-- **Projection :** journée du 29 août en cours après 4 h, capacité restante de 102 h 30 jusqu’au 6 septembre, déficit maintenu à 17 h 30 et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
+- **Dernier ticket clôturé :** ACT-010 le 30 août 2026, en 3 h pour 6 h estimées.
+- **Avancement :** 40 éléments terminés sur 60 et 96 h estimées restantes.
+- **Validation :** six projets compilés, audit réussi, 310 tests automatisés réussis, PR #46 fusionnée, CI `master` #143 réussie, sauvegarde PostgreSQL vérifiée par deux empreintes SHA-256 identiques, workflow de production #20, Railway actif, journaux ciblés sans anomalie, `/health` `Healthy` et smoke test authentifié des filtres réussi.
+- **Prochain ticket :** STR-001 — Maintenir le référentiel des cartes.
+- **Projection :** journée du 30 août clôturée à 13 h, capacité restante de 87 h jusqu’au 6 septembre, déficit projeté de 9 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -46,6 +46,8 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - restauration isolée validée sur PostgreSQL 18 avec 29 tables applicatives, 2 équipes, 5 migrations EF et 2 fichiers WebP privés.
 - calendrier d’équipe enrichi par des filtres de type et d’état, des vues quatre semaines/semaine sur ordinateur et une liste mobile limitée au jour sélectionné ;
 - type et état toujours identifiables par un libellé et une icône en complément de la couleur, avec débordement exact « + N autres ».
+- recherche textuelle et filtres combinables par période, type, état, participant et résultat, contrôlés côté serveur dans une fenêtre maximale de 29 jours ;
+- filtres conservés pendant la navigation interne, réinitialisation prévisible, activités annulées masquées par défaut et panneau responsive.
 
 ## Prérequis locaux
 
@@ -127,7 +129,7 @@ dotnet build RepriseWeb.slnx
 dotnet test EsportTeamManager.Tests/EsportTeamManager.Tests.csproj
 ```
 
-Après ACT-004 : six projets compilés sans erreur ; 248 tests applicatifs réussis localement sous WSL2 et dans GitHub Actions. ACT-004 conserve le nombre de tests .NET et ajoute deux scénarios documentés couvrant l’interface du calendrier et la chaîne contrôlée de livraison en production.
+Après ACT-010 : six projets compilés sans erreur ; 310 tests automatisés réussis localement et dans GitHub Actions, sans échec ni test ignoré. Le plan de recette couvre aussi les combinaisons de filtres, la navigation, la réinitialisation, le responsive et la chaîne contrôlée de livraison en production.
 
 ### Exécution locale des tests avec Smart App Control
 
