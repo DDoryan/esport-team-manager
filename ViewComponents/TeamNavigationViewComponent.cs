@@ -56,7 +56,8 @@ public sealed class TeamNavigationViewComponent : ViewComponent
         string? currentAction = ViewContext.RouteData.Values["action"]?.ToString();
         bool calendarIsActive = activeTeam is not null && string.Equals(currentController, "Activities", StringComparison.OrdinalIgnoreCase);
         bool managementIsActive = activeTeam is not null && string.Equals(currentController, "Teams", StringComparison.OrdinalIgnoreCase) && string.Equals(currentAction, "Management", StringComparison.OrdinalIgnoreCase);
-        TeamNavigationViewModel viewModel = new(activeTeam, navigationTeams, calendarIsActive, managementIsActive);
+        bool strategiesIsActive = activeTeam is not null && string.Equals(currentController, "Strategies", StringComparison.OrdinalIgnoreCase);
+        TeamNavigationViewModel viewModel = new(activeTeam, navigationTeams, calendarIsActive, managementIsActive, strategiesIsActive);
 
         return View(viewModel);
     }

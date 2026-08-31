@@ -161,6 +161,7 @@ builder.Services.AddScoped<IActivityCalendarService, ActivityCalendarService>();
 builder.Services.AddScoped<IActivityCreationService, ActivityCreationService>();
 builder.Services.AddScoped<IActivityEditingService, ActivityEditingService>();
 builder.Services.AddScoped<IMapCatalogService, MapCatalogService>();
+builder.Services.AddScoped<IStrategyListService, StrategyListService>();
 
 if (builder.Environment.IsProduction())
 {

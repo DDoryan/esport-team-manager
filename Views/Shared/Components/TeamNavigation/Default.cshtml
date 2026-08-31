@@ -102,6 +102,16 @@ else
                         Gestion d’équipe
                     </a>
                 </li>
+
+                <li class="nav-item">
+                    <a class="nav-link app-main-navigation-link @(Model.StrategiesIsActive ? "app-main-navigation-link-active" : string.Empty)"
+                       asp-controller="Strategies"
+                       asp-action="Index"
+                       asp-route-teamId="@Model.ActiveTeam.TeamId"
+                       aria-current="@(Model.StrategiesIsActive ? "page" : null)">
+                        Stratégies
+                    </a>
+                </li>
             }
         </ul>
     </div>

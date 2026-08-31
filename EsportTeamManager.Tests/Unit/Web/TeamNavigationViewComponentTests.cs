@@ -32,6 +32,7 @@ public sealed class TeamNavigationViewComponentTests
         Assert.Equal(team.TeamId, viewModel.ActiveTeam.TeamId);
         Assert.True(viewModel.CalendarIsActive);
         Assert.False(viewModel.ManagementIsActive);
+        Assert.False(viewModel.StrategiesIsActive);
         Assert.Contains($"EsportTeamManager.LastVisitedTeamId={team.TeamId}", setCookie);
         Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("secure", setCookie, StringComparison.OrdinalIgnoreCase);
@@ -57,6 +58,7 @@ public sealed class TeamNavigationViewComponentTests
         Assert.Equal(2, viewModel.Teams.Count);
         Assert.False(viewModel.CalendarIsActive);
         Assert.False(viewModel.ManagementIsActive);
+        Assert.False(viewModel.StrategiesIsActive);
     }
 
     [Fact]
@@ -75,7 +77,28 @@ public sealed class TeamNavigationViewComponentTests
         string setCookie = component.HttpContext.Response.Headers.SetCookie.ToString();
 
         Assert.Null(viewModel.ActiveTeam);
+        Assert.False(viewModel.CalendarIsActive);
+        Assert.False(viewModel.ManagementIsActive);
+        Assert.False(viewModel.StrategiesIsActive);
         Assert.Contains("EsportTeamManager.LastVisitedTeamId=;", setCookie);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenStrategiesPageIsDisplayed_MarksStrategiesAsActive()
+    {
+        Guid userId = Guid.NewGuid();
+        UserTeamSummary team = new(Guid.NewGuid(), "Phoenix Academy", "PHX", "Europe/Paris", "Joueur", true);
+        StubUserTeamService service = new([team]);
+        TeamNavigationViewComponent component = CreateComponent(service, userId, team.TeamId, null, "Strategies", "Index");
+
+        IViewComponentResult result = await component.InvokeAsync();
+
+        ViewViewComponentResult viewResult = Assert.IsType<ViewViewComponentResult>(result);
+        TeamNavigationViewModel viewModel = Assert.IsType<TeamNavigationViewModel>(viewResult.ViewData?.Model);
+
+        Assert.True(viewModel.StrategiesIsActive);
+        Assert.False(viewModel.CalendarIsActive);
+        Assert.False(viewModel.ManagementIsActive);
     }
 
     private static TeamNavigationViewComponent CreateComponent(IUserTeamService service, Guid userId, Guid? requestedTeamId, Guid? lastVisitedTeamId, string controllerName, string actionName)
