@@ -187,6 +187,29 @@ public sealed class ActivityEditingService : IActivityEditingService
             .Select(link => new ActivityEditLinkSummary(link.ActivityLinkId, link.Name, link.Url))
             .ToListAsync(cancellationToken);
 
+        Guid[] existingStrategyIdentifiers = await _context.ActivityStrategies
+            .AsNoTracking()
+            .Where(activityStrategy => activityStrategy.ActivityId == activityId)
+            .Select(activityStrategy => activityStrategy.StrategyId)
+            .ToArrayAsync(cancellationToken);
+
+        IReadOnlyCollection<ActivityEditStrategySummary> strategies = await _context.Strategies
+            .AsNoTracking()
+            .Where(strategy =>
+                strategy.TeamId == teamId
+                && (existingStrategyIdentifiers.Contains(strategy.StrategyId)
+                    || canEdit && strategy.IsActive))
+            .OrderBy(strategy => strategy.Name)
+            .Select(strategy => new ActivityEditStrategySummary(
+                strategy.StrategyId,
+                strategy.Name,
+                strategy.Map.Name,
+                strategy.Side,
+                strategy.IsActive,
+                existingStrategyIdentifiers.Contains(strategy.StrategyId),
+                _context.ImageFiles.Any(image => image.StrategyImageForStrategyId == strategy.StrategyId)))
+            .ToListAsync(cancellationToken);
+
         DateTime plannedStartLocal = TimeZoneInfo.ConvertTime(activity.PlannedStartUtc, timeZone).DateTime;
         DateTime plannedEndLocal = TimeZoneInfo.ConvertTime(activity.PlannedEndUtc, timeZone).DateTime;
 
@@ -213,7 +236,8 @@ public sealed class ActivityEditingService : IActivityEditingService
             activityTypes,
             participants,
             links,
-            activity.MatchDetail?.Result);
+            activity.MatchDetail?.Result,
+            strategies);
     }
 
     public async Task<UpdateActivityResult> UpdateAsync(UpdateActivityRequest request, CancellationToken cancellationToken = default)
@@ -384,6 +408,13 @@ public sealed class ActivityEditingService : IActivityEditingService
             return UpdateActivityResult.Failure([linkSynchronizationError]);
         }
 
+        string? strategySynchronizationError = await SynchronizeStrategiesAsync(request.ActivityId, request.TeamId, request.StrategyIds, cancellationToken);
+
+        if (strategySynchronizationError is not null)
+        {
+            return UpdateActivityResult.Failure([strategySynchronizationError]);
+        }
+
         MatchDetail? previousMatchDetail = activity.MatchDetail;
 
         try
@@ -551,6 +582,59 @@ public sealed class ActivityEditingService : IActivityEditingService
         {
             return "Les participants et présences fournis ne permettent pas de modifier l’activité.";
         }
+
+        return null;
+    }
+
+    private async Task<string?> SynchronizeStrategiesAsync(Guid activityId, Guid teamId, IReadOnlyCollection<Guid> requestedStrategyIds, CancellationToken cancellationToken)
+    {
+        HashSet<Guid> requestedIdentifiers = [];
+
+        foreach (Guid strategyId in requestedStrategyIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (strategyId == Guid.Empty || !requestedIdentifiers.Add(strategyId))
+            {
+                return "La demande contient un identifiant de stratégie invalide ou répété.";
+            }
+        }
+
+        List<ActivityStrategy> existingAssociations = await _context.ActivityStrategies
+            .Where(activityStrategy => activityStrategy.ActivityId == activityId)
+            .ToListAsync(cancellationToken);
+
+        HashSet<Guid> existingStrategyIdentifiers = existingAssociations
+            .Select(activityStrategy => activityStrategy.StrategyId)
+            .ToHashSet();
+
+        if (requestedIdentifiers.Count > 0)
+        {
+            HashSet<Guid> eligibleStrategyIdentifiers = await _context.Strategies
+                .AsNoTracking()
+                .Where(strategy =>
+                    requestedIdentifiers.Contains(strategy.StrategyId)
+                    && strategy.TeamId == teamId
+                    && (strategy.IsActive || existingStrategyIdentifiers.Contains(strategy.StrategyId)))
+                .Select(strategy => strategy.StrategyId)
+                .ToHashSetAsync(cancellationToken);
+
+            if (requestedIdentifiers.Any(strategyId => !eligibleStrategyIdentifiers.Contains(strategyId)))
+            {
+                return "Une ou plusieurs stratégies ne sont pas actives dans cette équipe et ne sont pas déjà associées à l’activité.";
+            }
+        }
+
+        IEnumerable<ActivityStrategy> removedAssociations = existingAssociations
+            .Where(activityStrategy => !requestedIdentifiers.Contains(activityStrategy.StrategyId));
+
+        _context.ActivityStrategies.RemoveRange(removedAssociations);
+
+        IEnumerable<ActivityStrategy> addedAssociations = requestedIdentifiers
+            .Where(strategyId => !existingStrategyIdentifiers.Contains(strategyId))
+            .Select(strategyId => new ActivityStrategy(activityId, strategyId));
+
+        _context.ActivityStrategies.AddRange(addedAssociations);
 
         return null;
     }

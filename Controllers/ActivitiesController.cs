@@ -322,6 +322,11 @@ public class ActivitiesController : Controller
             .Select(link => new UpdateActivityLinkRequest(link.ActivityLinkId, link.Name ?? string.Empty, link.Url ?? string.Empty))
             .ToArray();
 
+        IReadOnlyCollection<Guid> strategyIds = (model.Strategies ?? [])
+            .Where(strategy => strategy.IsSelected)
+            .Select(strategy => strategy.StrategyId)
+            .ToArray();
+
         UpdateActivityRequest request = new(
             currentUserId.Value,
             model.TeamId,
@@ -339,7 +344,8 @@ public class ActivitiesController : Controller
             model.OpponentScore,
             model.Status,
             model.CancellationReason,
-            model.StatusChangeConfirmed);
+            model.StatusChangeConfirmed,
+            strategyIds);
         UpdateActivityResult result = await _activityEditingService.UpdateAsync(request, cancellationToken);
 
         if (!result.Succeeded)
@@ -557,6 +563,11 @@ public class ActivitiesController : Controller
             .GroupBy(participant => participant.TeamMembershipId)
             .ToDictionary(group => group.Key, group => group.First());
 
+        Dictionary<Guid, ActivityEditStrategyViewModel> postedStrategies = (model?.Strategies ?? [])
+            .Where(strategy => strategy.StrategyId != Guid.Empty)
+            .GroupBy(strategy => strategy.StrategyId)
+            .ToDictionary(group => group.Key, group => group.First());
+
         viewModel.Participants = details.Participants
             .Select(participant =>
             {
@@ -576,6 +587,24 @@ public class ActivitiesController : Controller
                     isSelected,
                     participant.IsFormerMember,
                     isPresent);
+            })
+            .ToList();
+
+        viewModel.Strategies = details.Strategies
+            .Select(strategy =>
+            {
+                postedStrategies.TryGetValue(strategy.StrategyId, out ActivityEditStrategyViewModel? postedStrategy);
+
+                return new ActivityEditStrategyViewModel
+                {
+                    StrategyId = strategy.StrategyId,
+                    Name = strategy.Name,
+                    MapName = strategy.MapName,
+                    Side = strategy.Side,
+                    IsActive = strategy.IsActive,
+                    IsSelected = postedStrategy?.IsSelected ?? strategy.IsSelected,
+                    HasImage = strategy.HasImage,
+                };
             })
             .ToList();
 

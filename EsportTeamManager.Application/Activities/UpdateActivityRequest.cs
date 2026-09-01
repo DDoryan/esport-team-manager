@@ -26,6 +26,8 @@ public sealed class UpdateActivityRequest
 
     public IReadOnlyCollection<UpdateActivityLinkRequest> Links { get; }
 
+    public IReadOnlyCollection<Guid> StrategyIds { get; }
+
     public string? OpponentName { get; }
 
     public int? TeamScore { get; }
@@ -38,7 +40,7 @@ public sealed class UpdateActivityRequest
 
     public bool StatusChangeConfirmed { get; }
 
-    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links, string? opponentName = null, int? teamScore = null, int? opponentScore = null, ActivityStatus? status = null, string? cancellationReason = null, bool statusChangeConfirmed = false)
+    public UpdateActivityRequest(Guid userId, Guid teamId, Guid activityId, int activityTypeId, DateTime plannedStartLocal, DateTime plannedEndLocal, string? subtitle, string? description, string? report, IReadOnlyCollection<UpdateActivityParticipantRequest> participants, IReadOnlyCollection<UpdateActivityLinkRequest> links, string? opponentName = null, int? teamScore = null, int? opponentScore = null, ActivityStatus? status = null, string? cancellationReason = null, bool statusChangeConfirmed = false, IReadOnlyCollection<Guid>? strategyIds = null)
     {
         ArgumentNullException.ThrowIfNull(participants);
         ArgumentNullException.ThrowIfNull(links);
@@ -54,6 +56,7 @@ public sealed class UpdateActivityRequest
         Report = report;
         Participants = participants.ToArray();
         Links = links.ToArray();
+        StrategyIds = strategyIds?.ToArray() ?? [];
         OpponentName = opponentName;
         TeamScore = teamScore;
         OpponentScore = opponentScore;

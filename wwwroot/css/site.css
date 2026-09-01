@@ -4852,3 +4852,114 @@ select.team-information-control option
         width: 100%;
     }
 }
+
+.activity-edit-strategy-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.activity-edit-strategy-option {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    color: inherit;
+    cursor: pointer;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.015);
+    transition:
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.activity-edit-strategy-option:hover {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.06);
+}
+
+.activity-edit-strategy-option:has(.activity-edit-strategy-checkbox:checked) {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.activity-edit-strategy-checkbox {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    margin: 0;
+}
+
+.activity-edit-strategy-thumbnail {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 4833 / 2403;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.activity-edit-strategy-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.activity-edit-strategy-placeholder {
+    padding: 1rem;
+    color: var(--bs-secondary-color);
+    overflow-wrap: anywhere;
+    text-align: center;
+    font-weight: 600;
+}
+
+.activity-edit-strategy-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    padding: 0.8rem 0.9rem 0.9rem;
+}
+
+.activity-edit-strategy-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.activity-edit-strategy-name {
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+.activity-edit-strategy-history {
+    color: var(--bs-secondary-color);
+    font-size: 0.8rem;
+}
+
+.activity-edit-strategy-option-readonly {
+    cursor: default;
+}
+
+.activity-edit-strategy-option-readonly:hover {
+    border-color: var(--bs-border-color);
+    background: rgba(255, 255, 255, 0.015);
+}
+
+@media (max-width: 991.98px) {
+    .activity-edit-strategy-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 575.98px) {
+    .activity-edit-strategy-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
