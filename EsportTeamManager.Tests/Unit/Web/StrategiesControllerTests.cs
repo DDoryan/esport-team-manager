@@ -285,6 +285,7 @@ public sealed class StrategiesControllerTests
                 null,
                 true,
                 false,
+                3,
                 false)
         };
         StrategiesController controller = CreateController(mapCatalogService, new StubStrategyListService(), userTeamService, userId, strategyEditingService);
@@ -299,6 +300,7 @@ public sealed class StrategiesControllerTests
         Assert.Equal("Lotus", model.MapName);
         Assert.Equal("Défense", model.SideLabel);
         Assert.False(model.CanManage);
+        Assert.Equal(3, model.AssociationCount);
     }
 
     [Fact]
@@ -324,6 +326,7 @@ public sealed class StrategiesControllerTests
                 null,
                 true,
                 false,
+                0,
                 false)
         };
         StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), userTeamService, userId, strategyEditingService);
@@ -342,6 +345,123 @@ public sealed class StrategiesControllerTests
 
         Assert.IsType<ForbidResult>(result);
         Assert.Null(strategyEditingService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task Delete_WhenUserIsNotAuthenticated_ReturnsChallenge()
+    {
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            DeleteResult = DeleteStrategyResult.Success(0)
+        };
+
+        StrategiesController controller = CreateController(
+            new StubMapCatalogService(),
+            new StubStrategyListService(),
+            new StubUserTeamService([]),
+            null,
+            strategyEditingService);
+
+        IActionResult result = await controller.Delete(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.IsType<ChallengeResult>(result);
+        Assert.Null(strategyEditingService.LastDeleteRequest);
+    }
+
+    [Fact]
+    public async Task Delete_WhenTeamIsNotAccessible_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            DeleteResult = DeleteStrategyResult.Success(0)
+        };
+
+        StrategiesController controller = CreateController(
+            new StubMapCatalogService(),
+            new StubStrategyListService(),
+            new StubUserTeamService([]),
+            userId,
+            strategyEditingService);
+
+        IActionResult result = await controller.Delete(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(strategyEditingService.LastDeleteRequest);
+    }
+
+    [Fact]
+    public async Task Delete_WhenServiceSucceeds_RedirectsToIndexAndAnnouncesAssociations()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", false)
+        ]);
+
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            DeleteResult = DeleteStrategyResult.Success(2)
+        };
+
+        StrategiesController controller = CreateController(
+            new StubMapCatalogService(),
+            new StubStrategyListService(),
+            userTeamService,
+            userId,
+            strategyEditingService);
+
+        IActionResult result = await controller.Delete(teamId, strategyId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        DeleteStrategyRequest request = Assert.IsType<DeleteStrategyRequest>(strategyEditingService.LastDeleteRequest);
+        string successMessage = Assert.IsType<string>(controller.TempData["SuccessMessage"]);
+
+        Assert.Equal(nameof(StrategiesController.Index), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues?["teamId"]);
+        Assert.Equal(userId, request.ActorUserId);
+        Assert.Equal(teamId, request.TeamId);
+        Assert.Equal(strategyId, request.StrategyId);
+        Assert.Contains("2 associations", successMessage);
+        Assert.Contains("activités associées ont été conservées", successMessage);
+    }
+
+    [Fact]
+    public async Task Delete_WhenServiceFails_RedirectsToDetailsWithError()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", false)
+        ]);
+
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            DeleteResult = DeleteStrategyResult.Failure(["La suppression a été refusée."])
+        };
+
+        StrategiesController controller = CreateController(
+            new StubMapCatalogService(),
+            new StubStrategyListService(),
+            userTeamService,
+            userId,
+            strategyEditingService);
+
+        IActionResult result = await controller.Delete(teamId, strategyId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        string errorMessage = Assert.IsType<string>(controller.TempData["ErrorMessage"]);
+
+        Assert.Equal(nameof(StrategiesController.Details), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues?["teamId"]);
+        Assert.Equal(strategyId, redirect.RouteValues?["strategyId"]);
+        Assert.Equal("La suppression a été refusée.", errorMessage);
     }
 
     [Fact]
@@ -518,6 +638,13 @@ public sealed class StrategiesControllerTests
 
         public Guid? LastStrategyId { get; private set; }
 
+        public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
         public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid actorUserId, Guid teamId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -689,9 +816,20 @@ public sealed class StrategiesControllerTests
 
         public SaveStrategyResult UpdateResult { get; set; } = SaveStrategyResult.Failure(["Le résultat de modification n’est pas configuré."]);
 
+        public DeleteStrategyResult DeleteResult { get; set; } = DeleteStrategyResult.Failure(["Le résultat de suppression n’est pas configuré."]);
+
+        public DeleteStrategyRequest? LastDeleteRequest { get; private set; }
+
         public CreateStrategyRequest? LastCreateRequest { get; private set; }
 
         public UpdateStrategyRequest? LastUpdateRequest { get; private set; }
+
+        public Task<DeleteStrategyResult> DeleteAsync(DeleteStrategyRequest request, CancellationToken cancellationToken = default)
+        {
+            LastDeleteRequest = request;
+
+            return Task.FromResult(DeleteResult);
+        }
 
         public Task<bool> CanManageAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
         {

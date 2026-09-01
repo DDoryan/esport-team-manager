@@ -476,5 +476,12 @@ public sealed class UserNotificationServiceTests
         {
             throw new NotSupportedException();
         }
+
+        public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
     }
 }

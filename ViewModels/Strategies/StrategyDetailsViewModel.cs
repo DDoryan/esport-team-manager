@@ -16,5 +16,7 @@ public sealed class StrategyDetailsViewModel : StrategyFormViewModel
 
     public bool HasImage { get; set; }
 
+    public int AssociationCount { get; set; }
+
     public bool CanManage { get; set; }
 }

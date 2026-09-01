@@ -1011,6 +1011,13 @@ public sealed class TeamsControllerTests
 
             return Task.FromResult(StorePrivateImageResult.Failure(["Non utilisé par ce test."]));
         }
+
+        public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubTempDataProvider : ITempDataProvider

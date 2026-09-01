@@ -1918,6 +1918,13 @@ public sealed class UserTeamServiceTests
 
             return Task.FromResult(StorePrivateImageResult.Failure(["Le stockage du logo n’est pas utilisé par ce test."]));
         }
+
+        public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task<ApplicationUser> CreateActiveUserAsync(UserManager<ApplicationUser> userManager, string email, string pseudo, string tag)

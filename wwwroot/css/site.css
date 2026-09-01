@@ -4963,3 +4963,49 @@ select.team-information-control option
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+.strategy-delete-panel {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.strategy-delete-panel h3 {
+    color: var(--bs-danger-text-emphasis);
+}
+
+.strategy-delete-panel p {
+    max-width: 46rem;
+}
+
+.strategy-delete-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.strategy-delete-action-row p {
+    flex: 1;
+}
+
+.strategy-delete-form {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+@media (max-width: 575.98px) {
+    .strategy-delete-action-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .strategy-delete-form {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .strategy-delete-form .btn {
+        width: 100%;
+    }
+}

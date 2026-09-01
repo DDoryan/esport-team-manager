@@ -304,6 +304,139 @@ public sealed class StrategyEditingServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_WhenStrategyHasAssociations_DeletesAssociationsAndPreservesActivities()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        StubPrivateImageService imageService = new();
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString, imageService);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IStrategyEditingService strategyEditingService = scope.ServiceProvider.GetRequiredService<IStrategyEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Strategy strategy = await CreateStrategyAsync(context, team.TeamId, team.OwnerMembershipId);
+        TeamActivity firstActivity = await CreateMeetingAsync(context, team, new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero));
+        TeamActivity secondActivity = await CreateMeetingAsync(context, team, new DateTimeOffset(2026, 9, 1, 15, 0, 0, TimeSpan.Zero));
+
+        context.ActivityStrategies.AddRange(
+            new ActivityStrategy(firstActivity.ActivityId, strategy.StrategyId),
+            new ActivityStrategy(secondActivity.ActivityId, strategy.StrategyId));
+
+        await context.SaveChangesAsync();
+
+        StrategyEditingDetails? details = await strategyEditingService.GetAsync(owner.Id, team.TeamId, strategy.StrategyId);
+
+        Assert.NotNull(details);
+        Assert.Equal(2, details.AssociationCount);
+
+        DeleteStrategyRequest request = new(owner.Id, team.TeamId, strategy.StrategyId);
+
+        DeleteStrategyResult result = await strategyEditingService.DeleteAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.DeletedAssociationCount);
+
+        context.ChangeTracker.Clear();
+
+        Assert.False(await context.Strategies.AsNoTracking().AnyAsync());
+        Assert.Empty(await context.ActivityStrategies.AsNoTracking().ToListAsync());
+        Assert.Equal(2, await context.TeamActivities.AsNoTracking().CountAsync());
+        Assert.True(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "STRATEGY_DELETED"));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenInactiveStrategyHasImage_DeletesMetadataAndRequestsFileCleanup()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        StubPrivateImageService imageService = new();
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString, imageService);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IStrategyEditingService strategyEditingService = scope.ServiceProvider.GetRequiredService<IStrategyEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Strategy strategy = await CreateStrategyAsync(context, team.TeamId, team.OwnerMembershipId);
+        DateTimeOffset updatedAtUtc = new(2026, 9, 1, 11, 0, 0, TimeSpan.Zero);
+
+        strategy.SetActive(false, updatedAtUtc);
+
+        string optimizedStorageKey = $"strategy-images/{strategy.StrategyId:N}/stored.webp";
+        string thumbnailStorageKey = $"strategy-images/{strategy.StrategyId:N}/stored-thumbnail.webp";
+
+        ImageFile image = ImageFile.CreateStrategyImage(
+            strategy.StrategyId,
+            "stored.webp",
+            "strategy.png",
+            "image/webp",
+            100,
+            128,
+            128,
+            optimizedStorageKey,
+            thumbnailStorageKey,
+            updatedAtUtc);
+
+        context.ImageFiles.Add(image);
+        await context.SaveChangesAsync();
+
+        DeleteStrategyRequest request = new(owner.Id, team.TeamId, strategy.StrategyId);
+
+        DeleteStrategyResult result = await strategyEditingService.DeleteAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(0, result.DeletedAssociationCount);
+
+        context.ChangeTracker.Clear();
+
+        Assert.False(await context.Strategies.AsNoTracking().AnyAsync());
+        Assert.False(await context.ImageFiles.AsNoTracking().AnyAsync());
+        Assert.Equal(strategy.StrategyId, imageService.DeletedImageStrategyId);
+        Assert.Equal(optimizedStorageKey, imageService.DeletedOptimizedStorageKey);
+        Assert.Equal(thumbnailStorageKey, imageService.DeletedThumbnailStorageKey);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenPlayerIsNotOwner_ReturnsFailureAndPreservesStrategy()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        StubPrivateImageService imageService = new();
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString, imageService);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IStrategyEditingService strategyEditingService = scope.ServiceProvider.GetRequiredService<IStrategyEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser player = await CreateUserAsync(userManager, "player@example.test", "Player", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+
+        await AddMembershipAsync(context, team.TeamId, player, "Player");
+
+        Strategy strategy = await CreateStrategyAsync(context, team.TeamId, team.OwnerMembershipId);
+        DeleteStrategyRequest request = new(player.Id, team.TeamId, strategy.StrategyId);
+
+        DeleteStrategyResult result = await strategyEditingService.DeleteAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.Contains("pas autorisé", StringComparison.OrdinalIgnoreCase));
+
+        context.ChangeTracker.Clear();
+
+        Assert.True(await context.Strategies.AsNoTracking().AnyAsync(item => item.StrategyId == strategy.StrategyId));
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "STRATEGY_DELETED"));
+        Assert.Null(imageService.DeletedImageStrategyId);
+    }
+
+    [Fact]
     public async Task GetAsync_WhenPlayerIsActive_ReturnsReadOnlyDetails()
     {
         await using SqliteTestDatabase database = new();
@@ -393,6 +526,32 @@ public sealed class StrategyEditingServiceTests
         return strategy;
     }
 
+    private static async Task<TeamActivity> CreateMeetingAsync(ApplicationDbContext context, TeamSetup team, DateTimeOffset plannedStartUtc)
+    {
+        ActivityType activityType = await context.ActivityTypes.SingleAsync(item => item.Code == "Meeting");
+        Guid activityId = Guid.NewGuid();
+        DateTimeOffset createdAtUtc = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+
+        TeamActivity activity = new(
+            activityId,
+            team.TeamId,
+            activityType,
+            team.OwnerMembershipId,
+            plannedStartUtc,
+            plannedStartUtc.AddHours(2),
+            "Europe/Paris",
+            [team.OwnerMembershipId],
+            createdAtUtc,
+            "Réunion stratégique",
+            "Préparation collective.",
+            null);
+
+        context.TeamActivities.Add(activity);
+        await context.SaveChangesAsync();
+
+        return activity;
+    }
+
     private static async Task<TeamMembership> AddMembershipAsync(ApplicationDbContext context, Guid teamId, ApplicationUser user, string roleCode)
     {
         int roleId = await context.TeamRoles
@@ -410,6 +569,23 @@ public sealed class StrategyEditingServiceTests
     private sealed class StubPrivateImageService : IPrivateImageService
     {
         public StorePrivateImageResult StoreStrategyImageResult { get; set; } = StorePrivateImageResult.Failure(["Le stockage d’image ne devait pas être appelé."]);
+
+        public Guid? DeletedImageStrategyId { get; private set; }
+
+        public string? DeletedOptimizedStorageKey { get; private set; }
+
+        public string? DeletedThumbnailStorageKey { get; private set; }
+
+        public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            DeletedImageStrategyId = strategyId;
+            DeletedOptimizedStorageKey = optimizedStorageKey;
+            DeletedThumbnailStorageKey = thumbnailStorageKey;
+
+            return Task.CompletedTask;
+        }
 
         public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid actorUserId, Guid teamId, CancellationToken cancellationToken = default)
         {

@@ -440,6 +440,50 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DeleteStrategyImageFilesAsync_WithValidStorageKeys_DeletesOptimizedAndThumbnailFiles()
+    {
+        Team team = await AddTeamAsync();
+        Strategy strategy = new(
+            team.TeamId,
+            Guid.NewGuid(),
+            1,
+            "Exécution site A",
+            StrategySide.Attack,
+            "Description de la stratégie.",
+            null,
+            DateTimeOffset.UtcNow);
+
+        _context.Strategies.Add(strategy);
+        await _context.SaveChangesAsync();
+
+        byte[] sourceBytes = await CreatePngAsync(1600, 900);
+
+        await using MemoryStream content = new(sourceBytes);
+        StorePrivateImageRequest request = new(strategy.StrategyId, "strategy.png", content);
+
+        StorePrivateImageResult result = await _service.StoreStrategyImageAsync(request);
+
+        Assert.True(result.Succeeded);
+
+        ImageFile imageFile = Assert.IsType<ImageFile>(result.Image);
+        string optimizedPath = GetPhysicalPath(imageFile.OptimizedStorageKey);
+        string thumbnailPath = GetPhysicalPath(imageFile.ThumbnailStorageKey);
+
+        Assert.True(File.Exists(optimizedPath));
+        Assert.True(File.Exists(thumbnailPath));
+
+        await _service.DeleteStrategyImageFilesAsync(
+            strategy.StrategyId,
+            imageFile.OptimizedStorageKey,
+            imageFile.ThumbnailStorageKey);
+
+        Assert.False(File.Exists(optimizedPath));
+        Assert.False(File.Exists(thumbnailPath));
+        Assert.Equal(1, await _context.ImageFiles.CountAsync());
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
     public async Task GetStrategyImageAsync_AndThumbnail_AllowOnlyActiveMemberOfStrategyTeam()
     {
         Team team = await AddTeamAsync();

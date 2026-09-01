@@ -84,16 +84,7 @@
                        download
                        aria-label="Télécharger l’image de la stratégie"
                        title="Télécharger l’image">
-                        <a class="strategy-image-download-button"
-                           asp-controller="Strategies"
-                           asp-action="DownloadImage"
-                           asp-route-teamId="@Model.TeamId"
-                           asp-route-strategyId="@Model.StrategyId"
-                           download
-                           aria-label="Télécharger l’image de la stratégie"
-                           title="Télécharger l’image">
-                            <span aria-hidden="true">💾</span>
-                        </a>
+                        <span aria-hidden="true">💾</span>
                     </a>
                 }
                 else
@@ -389,6 +380,53 @@
                         </div>
                     </div>
                 </form>
+
+                <div class="strategy-delete-panel"
+                     aria-labelledby="strategy-delete-title">
+
+                    <h3 id="strategy-delete-title"
+                        class="h5">
+                        Supprimer la stratégie
+                    </h3>
+
+                    <p class="mb-2">
+                        @if (Model.AssociationCount == 0)
+                        {
+                            <span>Cette stratégie n’est associée à aucune activité.</span>
+                        }
+                        else if (Model.AssociationCount == 1)
+                        {
+                            <span>Cette stratégie est associée à 1 activité.</span>
+                        }
+                        else
+                        {
+                            <span>Cette stratégie est associée à @Model.AssociationCount activités.</span>
+                        }
+                    </p>
+
+                    <div class="strategy-delete-action-row">
+                        <p class="text-body-secondary mb-0">
+                            Les associations seront supprimées, mais les activités resteront disponibles.
+                            L’image et sa miniature seront également supprimées.
+                        </p>
+
+                        <form class="strategy-delete-form"
+                              method="post"
+                              asp-controller="Strategies"
+                              asp-action="Delete"
+                              asp-route-teamId="@Model.TeamId"
+                              asp-route-strategyId="@Model.StrategyId"
+                              data-strategy-delete-form
+                              data-strategy-name="@Model.CurrentName"
+                              data-strategy-association-count="@Model.AssociationCount">
+
+                            <button class="btn btn-outline-danger"
+                                    type="submit">
+                                Supprimer définitivement
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </section>
         }
     </div>
@@ -401,6 +439,9 @@
         <partial name="_ValidationScriptsPartial" />
 
         <script src="~/js/strategy-image-preview.js"
+                asp-append-version="true"
+                defer></script>
+        <script src="~/js/strategy-deletion.js"
                 asp-append-version="true"
                 defer></script>
     }
