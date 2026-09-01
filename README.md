@@ -7,11 +7,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - **Jalons atteints :** P0 terminé le 23 août 2026 ; socle Activités terminé le 30 août 2026.
 - **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, puis préversion `v0.2.0-socle-activites` sur le commit vérifié `915cc1e`.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** ACT-010 le 30 août 2026, en 3 h pour 6 h estimées.
-- **Avancement :** 40 éléments terminés sur 60 et 96 h estimées restantes.
-- **Validation :** six projets compilés, audit réussi, 310 tests automatisés réussis, PR #46 fusionnée, CI `master` #143 réussie, sauvegarde PostgreSQL vérifiée par deux empreintes SHA-256 identiques, workflow de production #20, Railway actif, journaux ciblés sans anomalie, `/health` `Healthy` et smoke test authentifié des filtres réussi.
-- **Prochain ticket :** STR-001 — Maintenir le référentiel des cartes.
-- **Projection :** journée du 30 août clôturée à 13 h, capacité restante de 87 h jusqu’au 6 septembre, déficit projeté de 9 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
+- **Dernier ticket clôturé :** STR-006 — Associer stratégies et activités, le 1er septembre 2026, en 2 h pour 4 h estimées.
+- **Avancement :** 45 éléments terminés sur 60 et 76 h estimées restantes.
+- **Validation :** six projets compilés, audit réussi, 373 tests automatisés réussis sans échec ni test ignoré, PR #51 fusionnée, CI de branche #158 et CI `master` #160 réussies, sauvegarde PostgreSQL vérifiée par `pg_restore` et deux empreintes SHA-256 identiques, workflow de production #25, Railway `ACTIVE`, base déjà à jour, `/health` `Healthy` et recette authentifiée des associations validée en production.
+- **Prochain ticket :** STR-007 — Supprimer une stratégie.
+- **Projection :** journée du 31 août clôturée à 10 h et journée du 1er septembre maintenue en cours après 5 h, 67 h disponibles jusqu’au 6 septembre, déficit projeté de 9 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -48,6 +48,11 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - type et état toujours identifiables par un libellé et une icône en complément de la couleur, avec débordement exact « + N autres ».
 - recherche textuelle et filtres combinables par période, type, état, participant et résultat, contrôlés côté serveur dans une fenêtre maximale de 29 jours ;
 - filtres conservés pendant la navigation interne, réinitialisation prévisible, activités annulées masquées par défaut et panneau responsive.
+- référentiel contrôlé de treize cartes et liste privée des stratégies, isolée par équipe, filtrable et responsive ;
+- création et modification d’une stratégie avec contenu minimal, URL HTTP/HTTPS et image PNG/JPEG/WebP stockée hors de `wwwroot` ;
+- affichage privé des miniatures et images optimisées, aperçu intégré et téléchargement WebP avec un nom compréhensible ;
+- association de plusieurs stratégies actives à une activité, conservation des associations historiques devenues inactives et refus côté serveur des identifiants étrangers, inactifs, vides ou répétés ;
+- cartes d’association avec miniature privée ou nom de carte de remplacement, affichées sur trois, deux puis une colonne selon la largeur.
 
 ## Prérequis locaux
 
