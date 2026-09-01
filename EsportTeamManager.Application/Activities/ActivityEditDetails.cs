@@ -50,7 +50,9 @@ public sealed class ActivityEditDetails
 
     public IReadOnlyCollection<ActivityEditLinkSummary> Links { get; }
 
-    public ActivityEditDetails(Guid activityId, Guid teamId, string teamName, string timeZoneId, int activityTypeId, string typeCode, string typeLabel, string? subtitle, DateTime plannedStartLocal, DateTime plannedEndLocal, string? description, string? report, ActivityStatus status, string? cancellationReason, string? opponentName, int? teamScore, int? opponentScore, DateTimeOffset updatedAtUtc, bool canEdit, IReadOnlyCollection<ActivityTypeOption> activityTypes, IReadOnlyCollection<ActivityEditParticipantSummary> participants, IReadOnlyCollection<ActivityEditLinkSummary> links, MatchResult? result = null)
+    public IReadOnlyCollection<ActivityEditStrategySummary> Strategies { get; }
+
+    public ActivityEditDetails(Guid activityId, Guid teamId, string teamName, string timeZoneId, int activityTypeId, string typeCode, string typeLabel, string? subtitle, DateTime plannedStartLocal, DateTime plannedEndLocal, string? description, string? report, ActivityStatus status, string? cancellationReason, string? opponentName, int? teamScore, int? opponentScore, DateTimeOffset updatedAtUtc, bool canEdit, IReadOnlyCollection<ActivityTypeOption> activityTypes, IReadOnlyCollection<ActivityEditParticipantSummary> participants, IReadOnlyCollection<ActivityEditLinkSummary> links, MatchResult? result = null, IReadOnlyCollection<ActivityEditStrategySummary>? strategies = null)
     {
         ActivityId = activityId;
         TeamId = teamId;
@@ -75,5 +77,6 @@ public sealed class ActivityEditDetails
         ActivityTypes = activityTypes;
         Participants = participants;
         Links = links;
+        Strategies = strategies?.ToArray() ?? [];
     }
 }

@@ -1329,6 +1329,138 @@ public sealed class ActivityEditingServiceTests
         Assert.Single(updatedActivity.Participants);
     }
 
+    [Fact]
+    public async Task GetAsync_WhenStrategiesExist_ReturnsActiveStrategiesAndExistingInactiveAssociation()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        Strategy activeStrategy = await CreateStrategyAsync(context, team, "Attaque du site A", true);
+        Strategy associatedInactiveStrategy = await CreateStrategyAsync(context, team, "Ancienne défense", false);
+        Strategy unassociatedInactiveStrategy = await CreateStrategyAsync(context, team, "Ancienne attaque", false);
+
+        context.ActivityStrategies.Add(new ActivityStrategy(activityId, associatedInactiveStrategy.StrategyId));
+        await context.SaveChangesAsync();
+
+        ActivityEditDetails details = Assert.IsType<ActivityEditDetails>(
+            await activityEditingService.GetAsync(owner.Id, team.TeamId, activityId));
+
+        Assert.Equal(2, details.Strategies.Count);
+
+        ActivityEditStrategySummary activeOption = Assert.Single(
+            details.Strategies,
+            strategy => strategy.StrategyId == activeStrategy.StrategyId);
+
+        ActivityEditStrategySummary inactiveOption = Assert.Single(
+            details.Strategies,
+            strategy => strategy.StrategyId == associatedInactiveStrategy.StrategyId);
+
+        Assert.True(activeOption.IsActive);
+        Assert.False(activeOption.IsSelected);
+        Assert.False(inactiveOption.IsActive);
+        Assert.True(inactiveOption.IsSelected);
+        Assert.DoesNotContain(
+            details.Strategies,
+            strategy => strategy.StrategyId == unassociatedInactiveStrategy.StrategyId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenMultipleStrategiesAreSelected_SynchronizesAssociationsAndPreservesExistingInactiveStrategy()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        Strategy activeStrategy = await CreateStrategyAsync(context, team, "Attaque du site A", true);
+        Strategy inactiveStrategy = await CreateStrategyAsync(context, team, "Ancienne défense", false);
+
+        context.ActivityStrategies.Add(new ActivityStrategy(activityId, inactiveStrategy.StrategyId));
+        await context.SaveChangesAsync();
+
+        UpdateActivityRequest request = CreateUpdateRequest(
+            owner.Id,
+            team,
+            activityId,
+            [activeStrategy.StrategyId, inactiveStrategy.StrategyId]);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        ActivityStrategy[] associations = await context.ActivityStrategies
+            .AsNoTracking()
+            .Where(activityStrategy => activityStrategy.ActivityId == activityId)
+            .OrderBy(activityStrategy => activityStrategy.StrategyId)
+            .ToArrayAsync();
+
+        Assert.Equal(2, associations.Length);
+        Assert.Contains(associations, association => association.StrategyId == activeStrategy.StrategyId);
+        Assert.Contains(associations, association => association.StrategyId == inactiveStrategy.StrategyId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateAsync_WhenUnavailableStrategyIsSelected_ReturnsFailureWithoutAssociation(bool strategyBelongsToAnotherTeam)
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+        Strategy unavailableStrategy;
+
+        if (strategyBelongsToAnotherTeam)
+        {
+            ApplicationUser otherOwner = await CreateUserAsync(userManager, "other@example.test", "Other", "B02");
+            TeamSetup otherTeam = await CreateTeamAsync(context, otherOwner, "Neon Academy", "NEO");
+            unavailableStrategy = await CreateStrategyAsync(context, otherTeam, "Attaque extérieure", true);
+        }
+        else
+        {
+            unavailableStrategy = await CreateStrategyAsync(context, team, "Stratégie inactive", false);
+        }
+
+        UpdateActivityRequest request = CreateUpdateRequest(
+            owner.Id,
+            team,
+            activityId,
+            [unavailableStrategy.StrategyId]);
+
+        UpdateActivityResult result = await activityEditingService.UpdateAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.NotEmpty(result.Errors);
+        Assert.Empty(await context.ActivityStrategies.AsNoTracking().ToListAsync());
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();
@@ -1368,7 +1500,7 @@ public sealed class ActivityEditingServiceTests
         return user;
     }
 
-    private static async Task<TeamSetup> CreateTeamAsync(ApplicationDbContext context, ApplicationUser owner)
+    private static async Task<TeamSetup> CreateTeamAsync(ApplicationDbContext context, ApplicationUser owner, string name = "Phoenix Academy", string tag = "PHX")
     {
         int playerRoleId = await context.TeamRoles
             .Where(role => role.Code == "Player")
@@ -1378,7 +1510,7 @@ public sealed class ActivityEditingServiceTests
         Guid teamId = Guid.NewGuid();
         Guid membershipId = Guid.NewGuid();
         DateTimeOffset createdAtUtc = new(2026, 8, 23, 8, 0, 0, TimeSpan.Zero);
-        Team team = new(teamId, owner.Id, "Phoenix Academy", createdAtUtc, "PHX", null, "Europe/Paris");
+        Team team = new(teamId, owner.Id, name, createdAtUtc, tag, null, "Europe/Paris");
         TeamMembership membership = new(membershipId, teamId, owner.Id, playerRoleId, createdAtUtc);
 
         context.Teams.Add(team);
@@ -1402,6 +1534,59 @@ public sealed class ActivityEditingServiceTests
         await context.SaveChangesAsync();
 
         return membership;
+    }
+
+    private static async Task<Strategy> CreateStrategyAsync(ApplicationDbContext context, TeamSetup team, string name, bool isActive)
+    {
+        Map map = await context.Maps
+            .OrderBy(item => item.MapId)
+            .FirstAsync();
+
+        DateTimeOffset createdAtUtc = new(2026, 8, 23, 9, 0, 0, TimeSpan.Zero);
+        Strategy strategy = new(
+            team.TeamId,
+            team.OwnerMembershipId,
+            map.MapId,
+            name,
+            StrategySide.Attack,
+            "Description de la stratégie",
+            null,
+            createdAtUtc);
+
+        if (!isActive)
+        {
+            strategy.SetActive(false, createdAtUtc.AddMinutes(1));
+        }
+
+        context.Strategies.Add(strategy);
+        await context.SaveChangesAsync();
+
+        return strategy;
+    }
+
+    private static UpdateActivityRequest CreateUpdateRequest(Guid userId, TeamSetup team, Guid activityId, IReadOnlyCollection<Guid> strategyIds)
+    {
+        return new UpdateActivityRequest(
+            userId,
+            team.TeamId,
+            activityId,
+            3,
+            new DateTime(2026, 8, 24, 18, 0, 0),
+            new DateTime(2026, 8, 24, 20, 0, 0),
+            "Sous-titre initial",
+            "Description initiale",
+            "Compte rendu initial",
+            [
+                new UpdateActivityParticipantRequest(team.OwnerMembershipId, true, null)
+            ],
+            [],
+            null,
+            null,
+            null,
+            ActivityStatus.Planned,
+            null,
+            false,
+            strategyIds);
     }
 
     private static async Task<Guid> CreatePlannedActivityAsync(ApplicationDbContext context, TeamSetup team)

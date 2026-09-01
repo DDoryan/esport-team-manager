@@ -1,6 +1,7 @@
-﻿@using EsportTeamManager.Domain.Enums
+﻿@using RepriseWeb.ViewModels.Activities
+@using EsportTeamManager.Domain.Enums
 
-@model RepriseWeb.ViewModels.Activities.EditActivityViewModel
+@model EditActivityViewModel
 
 @{
     string activityTitle = string.IsNullOrWhiteSpace(Model.Subtitle) ? Model.TypeLabel : $"{Model.TypeLabel} — {Model.Subtitle}";
@@ -613,11 +614,135 @@
             </section>
 
             <section class="activity-edit-section" aria-labelledby="activity-strategies-title">
-                <h2 id="activity-strategies-title" class="activity-edit-section-title">Stratégies associées</h2>
+                <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                        <h2 id="activity-strategies-title" class="activity-edit-section-title mb-1">
+                            Stratégies associées
+                        </h2>
 
-                <p class="text-body-secondary mb-0">
-                    Aucune stratégie associée.
-                </p>
+                        @if (Model.CanEdit)
+                        {
+                            <p class="text-body-secondary mb-0">
+                                Sélectionnez une ou plusieurs stratégies actives de l’équipe.
+                            </p>
+                        }
+                    </div>
+                </div>
+
+                @if (Model.Strategies.Count == 0)
+                {
+                    <p class="text-body-secondary mt-3 mb-0">
+                        @(Model.CanEdit ? "Aucune stratégie active disponible." : "Aucune stratégie associée.")
+                    </p>
+                }
+                else if (Model.CanEdit)
+                {
+                    <div class="activity-edit-strategy-list mt-3">
+                        @for (int index = 0; index < Model.Strategies.Count; index++)
+                        {
+                            string sideLabel = Model.Strategies[index].Side == StrategySide.Attack
+                                ? "Attaque"
+                                : "Défense";
+
+                            <label class="activity-edit-strategy-option">
+                                <input asp-for="Strategies[index].StrategyId" type="hidden" />
+
+                                <input asp-for="Strategies[index].IsSelected"
+                                       class="form-check-input activity-edit-strategy-checkbox" />
+
+                                <span class="activity-edit-strategy-thumbnail">
+                                    @if (Model.Strategies[index].HasImage)
+                                    {
+                                        <img src="@Url.Action("Thumbnail", "Strategies", new { teamId = Model.TeamId, strategyId = Model.Strategies[index].StrategyId })"
+                                             alt=""
+                                             loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="activity-edit-strategy-placeholder">
+                                            @Model.Strategies[index].MapName
+                                        </span>
+                                    }
+                                </span>
+
+                                <span class="activity-edit-strategy-content">
+                                    <span class="activity-edit-strategy-heading">
+                                        <span class="activity-edit-strategy-name">
+                                            @Model.Strategies[index].Name
+                                        </span>
+
+                                        @if (!Model.Strategies[index].IsActive)
+                                        {
+                                            <span class="badge text-bg-secondary">
+                                                Inactive
+                                            </span>
+                                        }
+                                    </span>
+
+                                    <span class="text-body-secondary">
+                                        @Model.Strategies[index].MapName · @sideLabel
+                                    </span>
+
+                                    @if (!Model.Strategies[index].IsActive)
+                                    {
+                                        <span class="activity-edit-strategy-history">
+                                            Association historique
+                                        </span>
+                                    }
+                                </span>
+                            </label>
+                        }
+                    </div>
+
+                    <span asp-validation-for="Strategies" class="text-danger"></span>
+                }
+                else
+                {
+                    <div class="activity-edit-strategy-list mt-3">
+                        @foreach (ActivityEditStrategyViewModel strategy in Model.Strategies.Where(strategy => strategy.IsSelected))
+                        {
+                            string sideLabel = strategy.Side == StrategySide.Attack
+                                ? "Attaque"
+                                : "Défense";
+
+                            <div class="activity-edit-strategy-option activity-edit-strategy-option-readonly">
+                                <span class="activity-edit-strategy-thumbnail">
+                                    @if (strategy.HasImage)
+                                    {
+                                        <img src="@Url.Action("Thumbnail", "Strategies", new { teamId = Model.TeamId, strategyId = strategy.StrategyId })"
+                                             alt=""
+                                             loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="activity-edit-strategy-placeholder">
+                                            @strategy.MapName
+                                        </span>
+                                    }
+                                </span>
+
+                                <span class="activity-edit-strategy-content">
+                                    <span class="activity-edit-strategy-heading">
+                                        <span class="activity-edit-strategy-name">
+                                            @strategy.Name
+                                        </span>
+
+                                        @if (!strategy.IsActive)
+                                        {
+                                            <span class="badge text-bg-secondary">
+                                                Inactive
+                                            </span>
+                                        }
+                                    </span>
+
+                                    <span class="text-body-secondary">
+                                        @strategy.MapName · @sideLabel
+                                    </span>
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
             </section>
 
             <section class="activity-edit-section" aria-labelledby="activity-report-title">

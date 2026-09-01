@@ -77,4 +77,6 @@ public sealed class EditActivityViewModel
     public List<ActivityEditParticipantViewModel> Participants { get; set; } = [];
 
     public List<ActivityEditLinkViewModel> Links { get; set; } = [];
+
+    public List<ActivityEditStrategyViewModel> Strategies { get; set; } = [];
 }
