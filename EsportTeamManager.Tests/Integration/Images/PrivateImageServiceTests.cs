@@ -440,16 +440,23 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetStrategyImageAsync_AllowsOnlyActiveTeamMember()
+    public async Task GetStrategyImageAsync_AndThumbnail_AllowOnlyActiveMemberOfStrategyTeam()
     {
         Team team = await AddTeamAsync();
+        Team otherTeam = await AddTeamAsync();
+
         int playerRoleId = await _context.TeamRoles
             .Where(role => role.Code == "Player")
             .Select(role => role.TeamRoleId)
             .SingleAsync();
-        TeamMembership ownerMembership = new(Guid.NewGuid(), team.TeamId, team.OwnerUserId, playerRoleId, DateTimeOffset.UtcNow);
 
-        _context.TeamMemberships.Add(ownerMembership);
+        TeamMembership ownerMembership = new(Guid.NewGuid(), team.TeamId, team.OwnerUserId, playerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership inactiveMembership = new(Guid.NewGuid(), team.TeamId, Guid.NewGuid(), playerRoleId, DateTimeOffset.UtcNow);
+        TeamMembership otherTeamMembership = new(Guid.NewGuid(), otherTeam.TeamId, otherTeam.OwnerUserId, playerRoleId, DateTimeOffset.UtcNow);
+
+        inactiveMembership.Leave(DateTimeOffset.UtcNow.AddMinutes(1));
+
+        _context.TeamMemberships.AddRange(ownerMembership, inactiveMembership, otherTeamMembership);
 
         Strategy strategy = new(team.TeamId, ownerMembership.TeamMembershipId, 1, "Exécution site A", StrategySide.Attack, "Description de la stratégie.", null, DateTimeOffset.UtcNow);
 
@@ -463,16 +470,26 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
 
         Assert.True(storageResult.Succeeded);
 
-        PrivateImageContent? authorizedResult = await _service.GetStrategyImageAsync(team.OwnerUserId, team.TeamId, strategy.StrategyId);
-        PrivateImageContent? unauthorizedResult = await _service.GetStrategyImageAsync(Guid.NewGuid(), team.TeamId, strategy.StrategyId);
-        PrivateImageContent authorizedImage = Assert.IsType<PrivateImageContent>(authorizedResult);
+        PrivateImageContent? optimizedResult = await _service.GetStrategyImageAsync(team.OwnerUserId, team.TeamId, strategy.StrategyId);
+        PrivateImageContent? thumbnailResult = await _service.GetStrategyImageThumbnailAsync(team.OwnerUserId, team.TeamId, strategy.StrategyId);
+        PrivateImageContent? inactiveResult = await _service.GetStrategyImageAsync(inactiveMembership.UserId!.Value, team.TeamId, strategy.StrategyId);
+        PrivateImageContent? otherTeamResult = await _service.GetStrategyImageAsync(otherTeam.OwnerUserId, otherTeam.TeamId, strategy.StrategyId);
 
-        await using Stream authorizedContent = authorizedImage.Content;
+        PrivateImageContent optimizedImage = Assert.IsType<PrivateImageContent>(optimizedResult);
+        PrivateImageContent thumbnailImage = Assert.IsType<PrivateImageContent>(thumbnailResult);
 
-        Assert.Equal("image/webp", authorizedImage.MediaType);
-        Assert.True(authorizedContent.CanRead);
-        Assert.True(authorizedContent.Length > 0);
-        Assert.Null(unauthorizedResult);
+        await using Stream optimizedContent = optimizedImage.Content;
+        await using Stream thumbnailContent = thumbnailImage.Content;
+
+        Assert.Equal("image/webp", optimizedImage.MediaType);
+        Assert.Equal("image/webp", thumbnailImage.MediaType);
+        Assert.Equal("Exécution site A.webp", optimizedImage.DownloadFileName);
+        Assert.Equal("Exécution site A.webp", thumbnailImage.DownloadFileName);
+        Assert.True(optimizedContent.CanRead);
+        Assert.True(thumbnailContent.CanRead);
+        Assert.True(optimizedContent.Length > thumbnailContent.Length);
+        Assert.Null(inactiveResult);
+        Assert.Null(otherTeamResult);
     }
 
     [Fact]

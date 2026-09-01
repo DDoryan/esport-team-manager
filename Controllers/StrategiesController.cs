@@ -272,6 +272,60 @@ public sealed class StrategiesController : Controller
     }
 
     [HttpGet]
+    public async Task<IActionResult> Thumbnail(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty || strategyId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
+        PrivateImageContent? image = await _privateImageService.GetStrategyImageThumbnailAsync(currentUserId.Value, teamId, strategyId, cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["Cache-Control"] = "private, no-store";
+
+        return File(image.Content, image.MediaType);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> DownloadImage(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty || strategyId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
+        PrivateImageContent? image = await _privateImageService.GetStrategyImageAsync(currentUserId.Value, teamId, strategyId, cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["Cache-Control"] = "private, no-store";
+
+        return File(image.Content, image.MediaType, image.DownloadFileName ?? "strategie.webp");
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Details(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
     {
         Guid? currentUserId = GetCurrentUserId();

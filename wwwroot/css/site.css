@@ -4599,6 +4599,110 @@ select.team-information-control option
     text-align: center;
 }
 
+.strategy-details-image,
+.strategy-image-preview-large
+{
+    position: relative;
+}
+
+.strategy-image-preview-link
+{
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.strategy-image-preview-link img
+{
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.strategy-image-dialog
+{
+    width: min(90vw, 75rem);
+    max-width: none;
+    padding: 0;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: var(--app-surface);
+    color: var(--app-text);
+}
+
+.strategy-image-dialog::backdrop
+{
+    background: rgba(0, 0, 0, 0.72);
+}
+
+.strategy-image-dialog-content
+{
+    position: relative;
+    display: flex;
+    min-height: 12rem;
+    padding: 1rem;
+    align-items: center;
+    justify-content: center;
+}
+
+.strategy-image-dialog-content > img
+{
+    display: block;
+    max-width: 100%;
+    max-height: 78vh;
+    object-fit: contain;
+}
+
+.strategy-image-dialog-close
+{
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 2;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 50%;
+    background: rgba(7, 11, 20, 0.9);
+    color: var(--app-text);
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.strategy-image-dialog-close:hover
+{
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+}
+
+.strategy-image-download-button
+{
+    display: inline-flex;
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 0;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    font-size: 1.6rem;
+    text-decoration: none;
+    opacity: 0.85;
+}
+
+.strategy-image-download-button:hover
+{
+    opacity: 1;
+    transform: scale(1.1);
+}
+
 .strategy-details-layout-readonly {
     grid-template-columns: minmax(0, 1fr);
 }

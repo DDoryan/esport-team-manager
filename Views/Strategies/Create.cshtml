@@ -217,11 +217,34 @@
                             <span>Aucune image</span>
                         </div>
 
-                        <img src=""
-                             alt="Aperçu de l’image sélectionnée"
-                             hidden
-                             data-strategy-image-preview-content />
+                        <button class="strategy-image-preview-link"
+                                type="button"
+                                aria-label="Ouvrir l’image sélectionnée en grand"
+                                hidden
+                                data-strategy-image-preview-link>
+                            <img src=""
+                                 alt="Aperçu de l’image sélectionnée"
+                                 hidden
+                                 data-strategy-image-preview-content />
+                        </button>
                     </div>
+
+                    <dialog class="strategy-image-dialog"
+                            aria-label="Aperçu agrandi de l’image"
+                            data-strategy-image-dialog>
+                        <div class="strategy-image-dialog-content">
+                            <button class="strategy-image-dialog-close"
+                                    type="button"
+                                    aria-label="Fermer l’aperçu"
+                                    data-strategy-image-dialog-close>
+                                ×
+                            </button>
+
+                            <img src=""
+                                 alt="Image agrandie"
+                                 data-strategy-image-dialog-content />
+                        </div>
+                    </dialog>
                 </div>
 
             </div>
