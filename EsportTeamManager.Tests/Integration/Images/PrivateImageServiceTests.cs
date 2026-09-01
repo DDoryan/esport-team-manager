@@ -440,6 +440,42 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetStrategyImageAsync_AllowsOnlyActiveTeamMember()
+    {
+        Team team = await AddTeamAsync();
+        int playerRoleId = await _context.TeamRoles
+            .Where(role => role.Code == "Player")
+            .Select(role => role.TeamRoleId)
+            .SingleAsync();
+        TeamMembership ownerMembership = new(Guid.NewGuid(), team.TeamId, team.OwnerUserId, playerRoleId, DateTimeOffset.UtcNow);
+
+        _context.TeamMemberships.Add(ownerMembership);
+
+        Strategy strategy = new(team.TeamId, ownerMembership.TeamMembershipId, 1, "Exécution site A", StrategySide.Attack, "Description de la stratégie.", null, DateTimeOffset.UtcNow);
+
+        _context.Strategies.Add(strategy);
+        await _context.SaveChangesAsync();
+
+        byte[] sourceBytes = await CreatePngAsync(1600, 900);
+
+        await using MemoryStream sourceContent = new(sourceBytes);
+        StorePrivateImageResult storageResult = await _service.StoreStrategyImageAsync(new StorePrivateImageRequest(strategy.StrategyId, "strategy.png", sourceContent));
+
+        Assert.True(storageResult.Succeeded);
+
+        PrivateImageContent? authorizedResult = await _service.GetStrategyImageAsync(team.OwnerUserId, team.TeamId, strategy.StrategyId);
+        PrivateImageContent? unauthorizedResult = await _service.GetStrategyImageAsync(Guid.NewGuid(), team.TeamId, strategy.StrategyId);
+        PrivateImageContent authorizedImage = Assert.IsType<PrivateImageContent>(authorizedResult);
+
+        await using Stream authorizedContent = authorizedImage.Content;
+
+        Assert.Equal("image/webp", authorizedImage.MediaType);
+        Assert.True(authorizedContent.CanRead);
+        Assert.True(authorizedContent.Length > 0);
+        Assert.Null(unauthorizedResult);
+    }
+
+    [Fact]
     public async Task UpdateInformationAsync_WithValidLogo_PersistsTeamLogoAndTraceTogether()
     {
         Team team = await AddTeamAsync();

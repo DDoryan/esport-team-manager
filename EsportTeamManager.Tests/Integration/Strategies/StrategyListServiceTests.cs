@@ -45,6 +45,48 @@ public sealed class StrategyListServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_IndicatesWhetherEachStrategyHasAnImage()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        IStrategyListService service = scope.ServiceProvider.GetRequiredService<IStrategyListService>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner, "Phoenix Academy", "PHX");
+        DateTimeOffset updatedAtUtc = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+        Strategy strategyWithImage = await AddStrategyAsync(context, team, "Ascent", "Stratégie illustrée", StrategySide.Attack, true, updatedAtUtc);
+        Strategy strategyWithoutImage = await AddStrategyAsync(context, team, "Lotus", "Stratégie sans image", StrategySide.Defense, true, updatedAtUtc.AddMinutes(-1));
+        ImageFile image = ImageFile.CreateStrategyImage(
+            strategyWithImage.StrategyId,
+            "strategy.webp",
+            "strategy.png",
+            "image/webp",
+            1024,
+            4833,
+            2403,
+            $"strategy-images/{strategyWithImage.StrategyId:N}/strategy.webp",
+            $"strategy-images/{strategyWithImage.StrategyId:N}/strategy-thumbnail.webp",
+            updatedAtUtc);
+
+        context.ImageFiles.Add(image);
+        await context.SaveChangesAsync();
+
+        context.ChangeTracker.Clear();
+
+        IReadOnlyCollection<StrategySummary> strategies = await service.GetAsync(team.TeamId, new StrategyListFilter(null, null, null, null));
+        StrategySummary summaryWithImage = strategies.Single(strategy => strategy.StrategyId == strategyWithImage.StrategyId);
+        StrategySummary summaryWithoutImage = strategies.Single(strategy => strategy.StrategyId == strategyWithoutImage.StrategyId);
+
+        Assert.True(summaryWithImage.HasImage);
+        Assert.False(summaryWithoutImage.HasImage);
+    }
+
+    [Fact]
     public async Task GetAsync_WithMapSelected_ReturnsOnlySelectedMap()
     {
         await using SqliteTestDatabase database = new();

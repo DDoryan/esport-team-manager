@@ -155,6 +155,17 @@
            data-strategy-filter-reset>
             Réinitialiser les filtres
         </a>
+
+        @if (Model.CanCreateStrategy)
+        {
+            <a class="btn btn-primary strategy-create-button"
+               asp-controller="Strategies"
+               asp-action="Create"
+               asp-route-teamId="@Model.TeamId">
+                <span aria-hidden="true">＋</span>
+                Créer une stratégie
+            </a>
+        }
     </form>
 
     <p class="visually-hidden"
@@ -185,33 +196,51 @@
                      aria-label="Stratégies de l’équipe @Model.TeamName">
                 @foreach (StrategyCardViewModel strategy in Model.Strategies)
                 {
-                    <article class="strategy-card">
-                        <div class="strategy-card-thumbnail" aria-hidden="true">
-                            <i class="bi bi-diagram-3"></i>
-                            <span>@strategy.MapName</span>
-                        </div>
-
-                        <div class="strategy-card-body">
-                            <h2 class="strategy-card-title">
-                                @strategy.Name
-                            </h2>
-
-                            <p class="strategy-card-metadata">
-                                @strategy.MapName · @strategy.SideLabel
-                            </p>
-
-                            <div class="strategy-card-footer">
-                                <span class="strategy-status-badge @(strategy.IsActive ? "strategy-status-active" : "strategy-status-inactive")">
-                                    @strategy.StatusLabel
-                                </span>
-
-                                <time class="strategy-updated-date"
-                                      datetime="@strategy.UpdatedAtUtc.ToString("O")">
-                                    Modifiée le @strategy.UpdatedAtUtc.ToString("dd/MM/yyyy")
-                                </time>
+                    <a class="strategy-card-link"
+                       asp-controller="Strategies"
+                       asp-action="Details"
+                       asp-route-teamId="@Model.TeamId"
+                       asp-route-strategyId="@strategy.StrategyId"
+                       aria-label="Consulter la stratégie @strategy.Name">
+                        <article class="strategy-card">
+                            <div class="strategy-card-thumbnail @(strategy.HasImage ? "strategy-card-thumbnail-image" : "strategy-card-thumbnail-default")">
+                                @if (strategy.HasImage)
+                                {
+                                    <img src="@Url.Action("Image", "Strategies", new
+                                         {
+                                             teamId = Model.TeamId,
+                                             strategyId = strategy.StrategyId
+                                         })"
+                                         alt="Illustration de la stratégie @strategy.Name" />
+                                }
+                                else
+                                {
+                                    <span>@strategy.MapName</span>
+                                }
                             </div>
-                        </div>
-                    </article>
+
+                            <div class="strategy-card-body">
+                                <h2 class="strategy-card-title">
+                                    @strategy.Name
+                                </h2>
+
+                                <p class="strategy-card-metadata">
+                                    @strategy.MapName · @strategy.SideLabel
+                                </p>
+
+                                <div class="strategy-card-footer">
+                                    <span class="strategy-status-badge @(strategy.IsActive ? "strategy-status-active" : "strategy-status-inactive")">
+                                        @strategy.StatusLabel
+                                    </span>
+
+                                    <time class="strategy-updated-date"
+                                          datetime="@strategy.UpdatedAtUtc.ToString("O")">
+                                        Modifiée le @strategy.UpdatedAtUtc.ToString("dd/MM/yyyy")
+                                    </time>
+                                </div>
+                            </div>
+                        </article>
+                    </a>
                 }
             </section>
         }

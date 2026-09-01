@@ -58,6 +58,7 @@ public sealed class StrategyListService : IStrategyListService
                 strategy.Name,
                 strategy.Side,
                 strategy.IsActive,
+                _context.ImageFiles.Any(image => image.StrategyImageForStrategyId == strategy.StrategyId),
                 strategy.UpdatedAtUtc))
             .ToListAsync(cancellationToken);
 

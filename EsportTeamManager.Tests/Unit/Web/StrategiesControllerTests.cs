@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.Controllers;
 using RepriseWeb.ViewModels.Strategies;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using EsportTeamManager.Application.Images;
 
 namespace EsportTeamManager.Tests.Unit.Web;
 
@@ -185,7 +187,215 @@ public sealed class StrategiesControllerTests
         Assert.Null(strategyListService.LastFilter);
     }
 
-    private static StrategiesController CreateController(IMapCatalogService mapCatalogService, IStrategyListService strategyListService, IUserTeamService userTeamService, Guid? userId)
+    [Fact]
+    public async Task CreateGet_WhenUserCanManageTeam_ReturnsCreationView()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        StubMapCatalogService mapCatalogService = new(
+        [
+            new MapOption(1, "Ascent"),
+        new MapOption(2, "Lotus")
+        ]);
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", false)
+        ]);
+        StubStrategyEditingService strategyEditingService = new();
+        StrategiesController controller = CreateController(mapCatalogService, new StubStrategyListService(), userTeamService, userId, strategyEditingService);
+
+        IActionResult result = await controller.Create(teamId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        StrategyFormViewModel model = Assert.IsType<StrategyFormViewModel>(view.Model);
+
+        Assert.Equal(teamId, model.TeamId);
+        Assert.Equal("Phoenix Academy", model.TeamName);
+        Assert.Equal(2, model.Maps.Count);
+        Assert.True(model.IsActive);
+    }
+
+    [Fact]
+    public async Task CreatePost_WhenServiceSucceeds_RedirectsToDetails()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        StubMapCatalogService mapCatalogService = new(
+        [
+            new MapOption(4, "Ascent")
+        ]);
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", false)
+        ]);
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            CreateResult = SaveStrategyResult.Success(strategyId)
+        };
+        StrategiesController controller = CreateController(mapCatalogService, new StubStrategyListService(), userTeamService, userId, strategyEditingService);
+        StrategyFormViewModel viewModel = new()
+        {
+            TeamId = teamId,
+            Name = "Exécution site A",
+            MapId = 4,
+            Side = StrategySide.Attack,
+            Description = "Prise rapide du site A.",
+            IsActive = true
+        };
+
+        IActionResult result = await controller.Create(viewModel, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+        CreateStrategyRequest request = Assert.IsType<CreateStrategyRequest>(strategyEditingService.LastCreateRequest);
+
+        Assert.Equal(nameof(StrategiesController.Details), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues?["teamId"]);
+        Assert.Equal(strategyId, redirect.RouteValues?["strategyId"]);
+        Assert.Equal(userId, request.ActorUserId);
+        Assert.Equal(teamId, request.TeamId);
+        Assert.Equal("Exécution site A", request.Name);
+        Assert.Equal(StrategySide.Attack, request.Side);
+    }
+
+    [Fact]
+    public async Task DetailsGet_WhenPlayerIsActive_ReturnsReadOnlyView()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        StubMapCatalogService mapCatalogService = new(
+        [
+            new MapOption(9, "Lotus")
+        ]);
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Joueur", false)
+        ]);
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            Details = new StrategyEditingDetails(
+                strategyId,
+                teamId,
+                "Phoenix Academy",
+                9,
+                "Retake site C",
+                StrategySide.Defense,
+                "Reprise coordonnée.",
+                null,
+                true,
+                false,
+                false)
+        };
+        StrategiesController controller = CreateController(mapCatalogService, new StubStrategyListService(), userTeamService, userId, strategyEditingService);
+
+        IActionResult result = await controller.Details(teamId, strategyId, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        StrategyDetailsViewModel model = Assert.IsType<StrategyDetailsViewModel>(view.Model);
+
+        Assert.Equal(strategyId, model.StrategyId);
+        Assert.Equal("Retake site C", model.CurrentName);
+        Assert.Equal("Lotus", model.MapName);
+        Assert.Equal("Défense", model.SideLabel);
+        Assert.False(model.CanManage);
+    }
+
+    [Fact]
+    public async Task DetailsPost_WhenPlayerCannotManageStrategy_ReturnsForbid()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Joueur", false)
+        ]);
+        StubStrategyEditingService strategyEditingService = new()
+        {
+            Details = new StrategyEditingDetails(
+                strategyId,
+                teamId,
+                "Phoenix Academy",
+                4,
+                "Exécution site A",
+                StrategySide.Attack,
+                "Prise rapide.",
+                null,
+                true,
+                false,
+                false)
+        };
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), userTeamService, userId, strategyEditingService);
+        StrategyDetailsViewModel viewModel = new()
+        {
+            TeamId = teamId,
+            StrategyId = strategyId,
+            Name = "Modification interdite",
+            MapId = 4,
+            Side = StrategySide.Defense,
+            Description = "Modification interdite.",
+            IsActive = false
+        };
+
+        IActionResult result = await controller.Details(teamId, strategyId, viewModel, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(strategyEditingService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task Image_WhenUserIsNotAuthenticated_ReturnsChallenge()
+    {
+        StubPrivateImageService privateImageService = new();
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), null, privateImageService: privateImageService);
+
+        IActionResult result = await controller.Image(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.IsType<ChallengeResult>(result);
+        Assert.Null(privateImageService.LastActorUserId);
+    }
+
+    [Fact]
+    public async Task Image_WhenImageIsNotAccessible_ReturnsNotFound()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        StubPrivateImageService privateImageService = new();
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.Image(teamId, strategyId, CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+        Assert.Equal(userId, privateImageService.LastActorUserId);
+        Assert.Equal(teamId, privateImageService.LastTeamId);
+        Assert.Equal(strategyId, privateImageService.LastStrategyId);
+    }
+
+    [Fact]
+    public async Task Image_WhenImageIsAccessible_ReturnsPrivateImageFile()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        MemoryStream imageContent = new([1, 2, 3, 4]);
+        StubPrivateImageService privateImageService = new()
+        {
+            StrategyImage = new PrivateImageContent(imageContent, "image/webp")
+        };
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.Image(teamId, strategyId, CancellationToken.None);
+
+        FileStreamResult file = Assert.IsType<FileStreamResult>(result);
+
+        Assert.Same(imageContent, file.FileStream);
+        Assert.Equal("image/webp", file.ContentType);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl);
+    }
+
+    private static StrategiesController CreateController(IMapCatalogService mapCatalogService, IStrategyListService strategyListService, IUserTeamService userTeamService, Guid? userId, StubStrategyEditingService? strategyEditingService = null, StubPrivateImageService? privateImageService = null)
     {
         ClaimsIdentity identity = userId.HasValue
             ? new ClaimsIdentity(
@@ -194,7 +404,7 @@ public sealed class StrategiesControllerTests
             ], "Test")
             : new ClaimsIdentity();
 
-        StrategiesController controller = new(mapCatalogService, strategyListService, userTeamService)
+        StrategiesController controller = new(mapCatalogService, strategyListService, strategyEditingService ?? new StubStrategyEditingService(), userTeamService, privateImageService ?? new StubPrivateImageService())
         {
             ControllerContext = new ControllerContext
             {
@@ -205,7 +415,70 @@ public sealed class StrategiesControllerTests
             }
         };
 
+        controller.TempData = new TempDataDictionary(controller.HttpContext, new StubTempDataProvider());
+
         return controller;
+    }
+
+    private sealed class StubPrivateImageService : IPrivateImageService
+    {
+        public PrivateImageContent? StrategyImage { get; set; }
+
+        public Guid? LastActorUserId { get; private set; }
+
+        public Guid? LastTeamId { get; private set; }
+
+        public Guid? LastStrategyId { get; private set; }
+
+        public Task<PrivateImageContent?> GetTeamLogoThumbnailAsync(Guid actorUserId, Guid teamId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<PrivateImageContent?>(null);
+        }
+
+        public Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastActorUserId = actorUserId;
+            LastTeamId = teamId;
+            LastStrategyId = strategyId;
+
+            return Task.FromResult(StrategyImage);
+        }
+
+        public Task<StorePrivateImageResult> ReplaceStrategyImageAsync(ReplaceStrategyImageRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> ReplaceTeamLogoAsync(ReplaceTeamLogoRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> StoreStrategyImageAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<StorePrivateImageResult> StoreTeamLogoAsync(StorePrivateImageRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed class StubTempDataProvider : ITempDataProvider
+    {
+        public IDictionary<string, object?> LoadTempData(HttpContext context)
+        {
+            return new Dictionary<string, object?>();
+        }
+
+        public void SaveTempData(HttpContext context, IDictionary<string, object?> values)
+        {
+        }
     }
 
     private sealed class StubMapCatalogService : IMapCatalogService
@@ -302,6 +575,45 @@ public sealed class StrategiesControllerTests
         public Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class StubStrategyEditingService : IStrategyEditingService
+    {
+        public bool CanManage { get; set; } = true;
+
+        public StrategyEditingDetails? Details { get; set; }
+
+        public SaveStrategyResult CreateResult { get; set; } = SaveStrategyResult.Failure(["Le résultat de création n’est pas configuré."]);
+
+        public SaveStrategyResult UpdateResult { get; set; } = SaveStrategyResult.Failure(["Le résultat de modification n’est pas configuré."]);
+
+        public CreateStrategyRequest? LastCreateRequest { get; private set; }
+
+        public UpdateStrategyRequest? LastUpdateRequest { get; private set; }
+
+        public Task<bool> CanManageAsync(Guid userId, Guid teamId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(CanManage);
+        }
+
+        public Task<StrategyEditingDetails?> GetAsync(Guid userId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Details);
+        }
+
+        public Task<SaveStrategyResult> CreateAsync(CreateStrategyRequest request, CancellationToken cancellationToken = default)
+        {
+            LastCreateRequest = request;
+
+            return Task.FromResult(CreateResult);
+        }
+
+        public Task<SaveStrategyResult> UpdateAsync(UpdateStrategyRequest request, CancellationToken cancellationToken = default)
+        {
+            LastUpdateRequest = request;
+
+            return Task.FromResult(UpdateResult);
         }
     }
 }

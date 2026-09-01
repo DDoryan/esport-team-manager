@@ -16,9 +16,11 @@ public sealed class StrategySummary
 
     public bool IsActive { get; }
 
+    public bool HasImage { get; }
+
     public DateTimeOffset UpdatedAtUtc { get; }
 
-    public StrategySummary(Guid strategyId, int mapId, string mapName, string name, StrategySide side, bool isActive, DateTimeOffset updatedAtUtc)
+    public StrategySummary(Guid strategyId, int mapId, string mapName, string name, StrategySide side, bool isActive, bool hasImage, DateTimeOffset updatedAtUtc)
     {
         StrategyId = strategyId;
         MapId = mapId;
@@ -26,6 +28,7 @@ public sealed class StrategySummary
         Name = name;
         Side = side;
         IsActive = isActive;
+        HasImage = hasImage;
         UpdatedAtUtc = updatedAtUtc;
     }
 }
