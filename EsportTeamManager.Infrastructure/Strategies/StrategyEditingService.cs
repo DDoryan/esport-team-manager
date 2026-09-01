@@ -16,6 +16,7 @@ public sealed class StrategyEditingService : IStrategyEditingService
     private const string CoachRoleCode = "Coach";
     private const string StrategyCreatedActionCode = "STRATEGY_CREATED";
     private const string StrategyUpdatedActionCode = "STRATEGY_UPDATED";
+    private const string StrategyDeletedActionCode = "STRATEGY_DELETED";
 
     private readonly ApplicationDbContext _context;
     private readonly IPrivateImageService _privateImageService;
@@ -70,6 +71,7 @@ public sealed class StrategyEditingService : IStrategyEditingService
                 item.Strategy.ExternalUrl,
                 item.Strategy.IsActive,
                 _context.ImageFiles.Any(image => image.StrategyImageForStrategyId == item.Strategy.StrategyId),
+                _context.ActivityStrategies.Count(activityStrategy => activityStrategy.StrategyId == item.Strategy.StrategyId),
                 authorization.CanManage))
             .SingleOrDefaultAsync(cancellationToken);
     }
@@ -258,6 +260,86 @@ public sealed class StrategyEditingService : IStrategyEditingService
         }
 
         return SaveStrategyResult.Success(strategy.StrategyId);
+    }
+
+    public async Task<DeleteStrategyResult> DeleteAsync(DeleteStrategyRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.StrategyId == Guid.Empty)
+        {
+            return DeleteStrategyResult.Failure(["La stratégie est introuvable."]);
+        }
+
+        StrategyAuthorization? authorization = await GetAuthorizationAsync(request.ActorUserId, request.TeamId, cancellationToken);
+
+        if (authorization?.CanManage != true)
+        {
+            return DeleteStrategyResult.Failure(["Vous n’êtes pas autorisé à supprimer cette stratégie."]);
+        }
+
+        Strategy? strategy = await _context.Strategies
+            .SingleOrDefaultAsync(item => item.StrategyId == request.StrategyId && item.TeamId == request.TeamId, cancellationToken);
+
+        if (strategy is null)
+        {
+            return DeleteStrategyResult.Failure(["La stratégie est introuvable."]);
+        }
+
+        int associationCount = await _context.ActivityStrategies
+            .AsNoTracking()
+            .CountAsync(activityStrategy => activityStrategy.StrategyId == request.StrategyId, cancellationToken);
+
+        var imageData = await _context.ImageFiles
+            .AsNoTracking()
+            .Where(image => image.StrategyImageForStrategyId == request.StrategyId)
+            .Select(image => new
+            {
+                image.OptimizedStorageKey,
+                image.ThumbnailStorageKey
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+
+        await using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        _context.Strategies.Remove(strategy);
+        _context.ActionTraces.Add(new ActionTrace(
+            request.ActorUserId,
+            request.TeamId,
+            StrategyDeletedActionCode,
+            nameof(Strategy),
+            strategy.StrategyId.ToString(),
+            TraceOutcome.Succeeded,
+            utcNow));
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+
+            _logger.LogError(exception, "Strategy deletion persistence failed for actor {ActorUserId}, team {TeamId} and strategy {StrategyId}.", request.ActorUserId, request.TeamId, request.StrategyId);
+
+            return DeleteStrategyResult.Failure(["La stratégie n’a pas pu être supprimée. Veuillez réessayer."]);
+        }
+
+        if (imageData is not null)
+        {
+            await _privateImageService.DeleteStrategyImageFilesAsync(
+                request.StrategyId,
+                imageData.OptimizedStorageKey,
+                imageData.ThumbnailStorageKey,
+                CancellationToken.None);
+        }
+
+        return DeleteStrategyResult.Success(associationCount);
     }
 
     private async Task<StrategyAuthorization?> GetAuthorizationAsync(Guid userId, Guid teamId, CancellationToken cancellationToken)

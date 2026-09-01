@@ -9,4 +9,6 @@ public interface IStrategyEditingService
     Task<SaveStrategyResult> CreateAsync(CreateStrategyRequest request, CancellationToken cancellationToken = default);
 
     Task<SaveStrategyResult> UpdateAsync(UpdateStrategyRequest request, CancellationToken cancellationToken = default);
+
+    Task<DeleteStrategyResult> DeleteAsync(DeleteStrategyRequest request, CancellationToken cancellationToken = default);
 }

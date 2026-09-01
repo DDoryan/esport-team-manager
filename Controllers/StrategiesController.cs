@@ -454,6 +454,53 @@ public sealed class StrategiesController : Controller
         });
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        DeleteStrategyRequest request = new(currentUserId.Value, teamId, strategyId);
+        DeleteStrategyResult result = await _strategyEditingService.DeleteAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            TempData["ErrorMessage"] = string.Join(" ", result.Errors);
+
+            return RedirectToAction(nameof(Details), new
+            {
+                teamId,
+                strategyId
+            });
+        }
+
+        string associationMessage = result.DeletedAssociationCount switch
+        {
+            0 => "Aucune association n’a été supprimée.",
+            1 => "1 association a été supprimée.",
+            _ => $"{result.DeletedAssociationCount} associations ont été supprimées."
+        };
+
+        TempData["SuccessMessage"] = $"La stratégie a été supprimée. {associationMessage} Les activités associées ont été conservées.";
+
+        return RedirectToAction(nameof(Index), new
+        {
+            teamId
+        });
+    }
+
     private async Task<IReadOnlyCollection<StrategyMapOptionViewModel>> GetMapViewModelsAsync(CancellationToken cancellationToken)
     {
         IReadOnlyCollection<MapOption> maps = await _mapCatalogService.GetOptionsAsync(cancellationToken);
@@ -504,6 +551,7 @@ public sealed class StrategiesController : Controller
         viewModel.CurrentDescription = details.Description;
         viewModel.CurrentExternalUrl = details.ExternalUrl;
         viewModel.HasImage = details.HasImage;
+        viewModel.AssociationCount = details.AssociationCount;
         viewModel.CanManage = details.CanManage;
     }
 

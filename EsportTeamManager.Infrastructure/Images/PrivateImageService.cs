@@ -112,6 +112,28 @@ public sealed class PrivateImageService : IPrivateImageService
         return GetStrategyImageContentAsync(actorUserId, teamId, strategyId, false, cancellationToken);
     }
 
+    public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string normalizedOptimizedStorageKey = optimizedStorageKey?.Trim().Replace('\\', '/') ?? string.Empty;
+        string normalizedThumbnailStorageKey = thumbnailStorageKey?.Trim().Replace('\\', '/') ?? string.Empty;
+
+        if (strategyId == Guid.Empty
+            || !IsStrategyImageStorageKey(strategyId, normalizedOptimizedStorageKey)
+            || !IsStrategyImageStorageKey(strategyId, normalizedThumbnailStorageKey))
+        {
+            _logger.LogWarning("Strategy image cleanup was refused because its storage keys are invalid for strategy {StrategyId}.", strategyId);
+
+            return Task.CompletedTask;
+        }
+
+        TryDeleteFile(GetPhysicalPath(normalizedOptimizedStorageKey));
+        TryDeleteFile(GetPhysicalPath(normalizedThumbnailStorageKey));
+
+        return Task.CompletedTask;
+    }
+
     private async Task<PrivateImageContent?> GetStrategyImageContentAsync(Guid actorUserId, Guid teamId, Guid strategyId, bool useThumbnail, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -621,6 +643,22 @@ public sealed class PrivateImageService : IPrivateImageService
         }
 
         return physicalPath;
+    }
+
+    private static bool IsStrategyImageStorageKey(Guid strategyId, string storageKey)
+    {
+        string expectedPrefix = $"strategy-images/{strategyId:N}/";
+
+        if (!storageKey.StartsWith(expectedPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string fileName = storageKey[expectedPrefix.Length..];
+
+        return fileName.Length > 0
+            && !fileName.Contains('/')
+            && fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase);
     }
 
     private void TryDeleteFile(string filePath)

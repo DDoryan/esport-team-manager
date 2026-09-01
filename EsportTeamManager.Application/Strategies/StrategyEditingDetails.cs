@@ -24,9 +24,11 @@ public sealed class StrategyEditingDetails
 
     public bool HasImage { get; }
 
+    public int AssociationCount { get; }
+
     public bool CanManage { get; }
 
-    public StrategyEditingDetails(Guid strategyId, Guid teamId, string teamName, int mapId, string name, StrategySide side, string? description, string? externalUrl, bool isActive, bool hasImage, bool canManage)
+    public StrategyEditingDetails(Guid strategyId, Guid teamId, string teamName, int mapId, string name, StrategySide side, string? description, string? externalUrl, bool isActive, bool hasImage, int associationCount, bool canManage)
     {
         StrategyId = strategyId;
         TeamId = teamId;
@@ -39,5 +41,6 @@ public sealed class StrategyEditingDetails
         IsActive = isActive;
         HasImage = hasImage;
         CanManage = canManage;
+        AssociationCount = associationCount;
     }
 }
