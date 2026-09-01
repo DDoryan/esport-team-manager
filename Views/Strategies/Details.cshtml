@@ -52,6 +52,12 @@
 
                 @if (Model.HasImage)
                 {
+                    string imageUrl = Url.Action("Image", "Strategies", new
+                    {
+                        teamId = Model.TeamId,
+                        strategyId = Model.StrategyId
+                    })!;
+
                     <div class="strategy-image-preview-placeholder"
                          hidden
                          data-strategy-image-preview-placeholder>
@@ -61,13 +67,34 @@
                         <span>Aucune image</span>
                     </div>
 
-                    <img src="@Url.Action("Image", "Strategies", new
-                              {
-                                  teamId = Model.TeamId,
-                                  strategyId = Model.StrategyId
-                              })"
-                         alt="Illustration de la stratégie @Model.CurrentName"
-                         data-strategy-image-preview-content />
+                    <button class="strategy-image-preview-link"
+                            type="button"
+                            aria-label="Ouvrir l’image de la stratégie en grand"
+                            data-strategy-image-preview-link>
+                        <img src="@imageUrl"
+                             alt="Illustration de la stratégie @Model.CurrentName"
+                             data-strategy-image-preview-content />
+                    </button>
+
+                    <a class="strategy-image-download-button"
+                       asp-controller="Strategies"
+                       asp-action="DownloadImage"
+                       asp-route-teamId="@Model.TeamId"
+                       asp-route-strategyId="@Model.StrategyId"
+                       download
+                       aria-label="Télécharger l’image de la stratégie"
+                       title="Télécharger l’image">
+                        <a class="strategy-image-download-button"
+                           asp-controller="Strategies"
+                           asp-action="DownloadImage"
+                           asp-route-teamId="@Model.TeamId"
+                           asp-route-strategyId="@Model.StrategyId"
+                           download
+                           aria-label="Télécharger l’image de la stratégie"
+                           title="Télécharger l’image">
+                            <span aria-hidden="true">💾</span>
+                        </a>
+                    </a>
                 }
                 else
                 {
@@ -79,12 +106,35 @@
                         <span>Aucune image</span>
                     </div>
 
-                    <img src=""
-                         alt="Aperçu de la nouvelle image"
-                         hidden
-                         data-strategy-image-preview-content />
+                    <button class="strategy-image-preview-link"
+                            type="button"
+                            aria-label="Ouvrir la nouvelle image en grand"
+                            hidden
+                            data-strategy-image-preview-link>
+                        <img src=""
+                             alt="Aperçu de la nouvelle image"
+                             hidden
+                             data-strategy-image-preview-content />
+                    </button>
                 }
             </div>
+
+            <dialog class="strategy-image-dialog"
+                    aria-label="Aperçu agrandi de l’image"
+                    data-strategy-image-dialog>
+                <div class="strategy-image-dialog-content">
+                    <button class="strategy-image-dialog-close"
+                            type="button"
+                            aria-label="Fermer l’aperçu"
+                            data-strategy-image-dialog-close>
+                        ×
+                    </button>
+
+                    <img src=""
+                         alt="Image agrandie"
+                         data-strategy-image-dialog-content />
+                </div>
+            </dialog>
 
             <section class="strategy-details-section"
                      aria-labelledby="strategy-description-title">

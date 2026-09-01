@@ -1881,6 +1881,11 @@ public sealed class UserTeamServiceTests
             return Task.FromResult<PrivateImageContent?>(null);
         }
 
+        public Task<PrivateImageContent?> GetStrategyImageThumbnailAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+        {
+            return GetStrategyImageAsync(actorUserId, teamId, strategyId, cancellationToken);
+        }
+
         public Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

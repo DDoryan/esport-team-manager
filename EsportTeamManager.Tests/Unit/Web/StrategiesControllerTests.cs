@@ -395,6 +395,90 @@ public sealed class StrategiesControllerTests
         Assert.Equal("private, no-store", controller.Response.Headers.CacheControl);
     }
 
+    [Fact]
+    public async Task Thumbnail_WhenImageIsAccessible_ReturnsPrivateThumbnailFile()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        MemoryStream thumbnailContent = new([1, 2, 3]);
+        StubPrivateImageService privateImageService = new()
+        {
+            StrategyThumbnail = new PrivateImageContent(thumbnailContent, "image/webp")
+        };
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.Thumbnail(teamId, strategyId, CancellationToken.None);
+
+        FileStreamResult file = Assert.IsType<FileStreamResult>(result);
+
+        Assert.Same(thumbnailContent, file.FileStream);
+        Assert.Equal("image/webp", file.ContentType);
+        Assert.True(privateImageService.LastRequestUsedThumbnail);
+        Assert.Equal(userId, privateImageService.LastActorUserId);
+        Assert.Equal(teamId, privateImageService.LastTeamId);
+        Assert.Equal(strategyId, privateImageService.LastStrategyId);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl);
+    }
+
+    [Fact]
+    public async Task DownloadImage_WhenImageIsAccessible_ReturnsAttachmentWithReadableName()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        MemoryStream imageContent = new([1, 2, 3, 4]);
+        StubPrivateImageService privateImageService = new()
+        {
+            StrategyImage = new PrivateImageContent(imageContent, "image/webp", "Split A.webp")
+        };
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.DownloadImage(teamId, strategyId, CancellationToken.None);
+
+        FileStreamResult file = Assert.IsType<FileStreamResult>(result);
+
+        Assert.Same(imageContent, file.FileStream);
+        Assert.Equal("image/webp", file.ContentType);
+        Assert.Equal("Split A.webp", file.FileDownloadName);
+        Assert.False(privateImageService.LastRequestUsedThumbnail);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl);
+    }
+
+    [Fact]
+    public async Task DownloadImage_WhenImageIsNotAccessible_ReturnsNotFound()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid strategyId = Guid.NewGuid();
+        StubPrivateImageService privateImageService = new();
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.DownloadImage(teamId, strategyId, CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+        Assert.Equal(userId, privateImageService.LastActorUserId);
+        Assert.Equal(teamId, privateImageService.LastTeamId);
+        Assert.Equal(strategyId, privateImageService.LastStrategyId);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Thumbnail_WithEmptyIdentifier_ReturnsNotFoundWithoutReadingStorage(bool emptyTeamId, bool emptyStrategyId)
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = emptyTeamId ? Guid.Empty : Guid.NewGuid();
+        Guid strategyId = emptyStrategyId ? Guid.Empty : Guid.NewGuid();
+        StubPrivateImageService privateImageService = new();
+        StrategiesController controller = CreateController(new StubMapCatalogService(), new StubStrategyListService(), new StubUserTeamService([]), userId, privateImageService: privateImageService);
+
+        IActionResult result = await controller.Thumbnail(teamId, strategyId, CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+        Assert.Null(privateImageService.LastActorUserId);
+    }
+
     private static StrategiesController CreateController(IMapCatalogService mapCatalogService, IStrategyListService strategyListService, IUserTeamService userTeamService, Guid? userId, StubStrategyEditingService? strategyEditingService = null, StubPrivateImageService? privateImageService = null)
     {
         ClaimsIdentity identity = userId.HasValue
@@ -424,6 +508,10 @@ public sealed class StrategiesControllerTests
     {
         public PrivateImageContent? StrategyImage { get; set; }
 
+        public PrivateImageContent? StrategyThumbnail { get; set; }
+
+        public bool LastRequestUsedThumbnail { get; private set; }
+
         public Guid? LastActorUserId { get; private set; }
 
         public Guid? LastTeamId { get; private set; }
@@ -437,6 +525,18 @@ public sealed class StrategiesControllerTests
             return Task.FromResult<PrivateImageContent?>(null);
         }
 
+        public Task<PrivateImageContent?> GetStrategyImageThumbnailAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastActorUserId = actorUserId;
+            LastTeamId = teamId;
+            LastStrategyId = strategyId;
+            LastRequestUsedThumbnail = true;
+
+            return Task.FromResult(StrategyThumbnail);
+        }
+
         public Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -444,6 +544,7 @@ public sealed class StrategiesControllerTests
             LastActorUserId = actorUserId;
             LastTeamId = teamId;
             LastStrategyId = strategyId;
+            LastRequestUsedThumbnail = false;
 
             return Task.FromResult(StrategyImage);
         }

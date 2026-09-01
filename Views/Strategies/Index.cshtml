@@ -206,7 +206,7 @@
                             <div class="strategy-card-thumbnail @(strategy.HasImage ? "strategy-card-thumbnail-image" : "strategy-card-thumbnail-default")">
                                 @if (strategy.HasImage)
                                 {
-                                    <img src="@Url.Action("Image", "Strategies", new
+                                    <img src="@Url.Action("Thumbnail", "Strategies", new
                                          {
                                              teamId = Model.TeamId,
                                              strategyId = strategy.StrategyId

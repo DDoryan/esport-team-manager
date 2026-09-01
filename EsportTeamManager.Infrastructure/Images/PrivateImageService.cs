@@ -102,7 +102,17 @@ public sealed class PrivateImageService : IPrivateImageService
         }
     }
 
-    public async Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+    public Task<PrivateImageContent?> GetStrategyImageThumbnailAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+    {
+        return GetStrategyImageContentAsync(actorUserId, teamId, strategyId, true, cancellationToken);
+    }
+
+    public Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+    {
+        return GetStrategyImageContentAsync(actorUserId, teamId, strategyId, false, cancellationToken);
+    }
+
+    private async Task<PrivateImageContent?> GetStrategyImageContentAsync(Guid actorUserId, Guid teamId, Guid strategyId, bool useThumbnail, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -124,37 +134,41 @@ public sealed class PrivateImageService : IPrivateImageService
             return null;
         }
 
-        bool strategyBelongsToTeam = await _context.Strategies
+        var imageData = await _context.Strategies
             .AsNoTracking()
-            .AnyAsync(strategy => strategy.StrategyId == strategyId && strategy.TeamId == teamId, cancellationToken);
-
-        if (!strategyBelongsToTeam)
-        {
-            return null;
-        }
-
-        var imageData = await _context.ImageFiles
-            .AsNoTracking()
-            .Where(image => image.StrategyImageForStrategyId == strategyId)
-            .Select(image => new
+            .Where(strategy => strategy.StrategyId == strategyId && strategy.TeamId == teamId)
+            .Select(strategy => new
             {
-                image.OptimizedStorageKey,
-                image.MediaType
+                strategy.Name,
+                Image = _context.ImageFiles
+                    .Where(image => image.StrategyImageForStrategyId == strategy.StrategyId)
+                    .Select(image => new
+                    {
+                        image.OptimizedStorageKey,
+                        image.ThumbnailStorageKey,
+                        image.MediaType
+                    })
+                    .SingleOrDefault()
             })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (imageData is null)
+        if (imageData?.Image is null)
         {
             return null;
         }
 
-        string physicalPath = GetPhysicalPath(imageData.OptimizedStorageKey);
+        string storageKey = useThumbnail
+            ? imageData.Image.ThumbnailStorageKey
+            : imageData.Image.OptimizedStorageKey;
+
+        string physicalPath = GetPhysicalPath(storageKey);
+        string downloadFileName = CreateStrategyDownloadFileName(imageData.Name);
 
         try
         {
             FileStream content = new(physicalPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-            return new PrivateImageContent(content, imageData.MediaType);
+            return new PrivateImageContent(content, imageData.Image.MediaType, downloadFileName);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -560,6 +574,36 @@ public sealed class PrivateImageService : IPrivateImageService
         await using FileStream destination = new(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
 
         await image.SaveAsWebpAsync(destination, encoder, cancellationToken);
+    }
+
+    private static string CreateStrategyDownloadFileName(string strategyName)
+    {
+        char[] invalidCharacters =
+        [
+            '<',
+        '>',
+        ':',
+        '"',
+        '/',
+        '\\',
+        '|',
+        '?',
+        '*'
+        ];
+
+        string sanitizedName = new(strategyName
+            .Trim()
+            .Select(character => invalidCharacters.Contains(character) ? '-' : character)
+            .ToArray());
+
+        sanitizedName = sanitizedName.Trim(' ', '.', '-');
+
+        if (string.IsNullOrWhiteSpace(sanitizedName))
+        {
+            sanitizedName = "strategie";
+        }
+
+        return $"{sanitizedName}.webp";
     }
 
     private string GetPhysicalPath(string storageKey)
