@@ -22,7 +22,9 @@ public sealed class StrategyListViewModel
 
     public string? SearchText { get; }
 
-    public StrategyListViewModel(Guid teamId, string teamName, IReadOnlyCollection<StrategyMapOptionViewModel> maps, IReadOnlyCollection<StrategyCardViewModel> strategies, int? selectedMapId, IReadOnlyCollection<StrategySide> selectedSides, bool includeActive, bool includeInactive, string? searchText)
+    public bool CanCreateStrategy { get; }
+
+    public StrategyListViewModel(Guid teamId, string teamName, IReadOnlyCollection<StrategyMapOptionViewModel> maps, IReadOnlyCollection<StrategyCardViewModel> strategies, int? selectedMapId, IReadOnlyCollection<StrategySide> selectedSides, bool includeActive, bool includeInactive, string? searchText, bool canCreateStrategy)
     {
         ArgumentNullException.ThrowIfNull(maps);
         ArgumentNullException.ThrowIfNull(strategies);
@@ -37,5 +39,6 @@ public sealed class StrategyListViewModel
         IncludeActive = includeActive;
         IncludeInactive = includeInactive;
         SearchText = searchText;
+        CanCreateStrategy = canCreateStrategy;
     }
 }

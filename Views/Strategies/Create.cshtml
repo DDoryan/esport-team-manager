@@ -1,0 +1,259 @@
+﻿@using EsportTeamManager.Domain.Enums
+@using RepriseWeb.ViewModels.Strategies
+
+@model StrategyFormViewModel
+
+@{
+    ViewData["Title"] = "Créer une stratégie";
+}
+
+<section class="strategy-editor-page strategy-create-page"
+         aria-labelledby="strategy-create-title">
+
+    <header class="strategy-editor-header">
+        <a asp-controller="Strategies"
+           asp-action="Index"
+           asp-route-teamId="@Model.TeamId"
+           class="strategy-editor-back-link">
+            ← Retour aux stratégies
+        </a>
+
+        <h1 id="strategy-create-title">Créer une stratégie</h1>
+    </header>
+
+    <section class="strategy-editor-panel">
+        <form method="post"
+              asp-controller="Strategies"
+              asp-action="Create"
+              enctype="multipart/form-data">
+
+            <input asp-for="TeamId" type="hidden" />
+
+            <div asp-validation-summary="ModelOnly"
+                 class="text-danger"
+                 role="alert"></div>
+
+            <div class="strategy-create-columns">
+
+                <div class="strategy-create-left">
+
+                    <div class="strategy-editor-field">
+                        <label asp-for="Name">Nom</label>
+
+                        <input asp-for="Name"
+                               class="form-control"
+                               maxlength="100"
+                               autocomplete="off" />
+
+                        <span asp-validation-for="Name"
+                              class="text-danger"></span>
+                    </div>
+
+                    <div class="strategy-editor-field">
+                        <label asp-for="MapId">Carte</label>
+
+                        <select asp-for="MapId"
+                                class="form-select">
+
+                            <option value="">Sélectionner une carte</option>
+
+                            @foreach (StrategyMapOptionViewModel map in Model.Maps)
+                            {
+                                <option value="@map.MapId">
+                                    @map.Name
+                                </option>
+                            }
+                        </select>
+
+                        <span asp-validation-for="MapId"
+                              class="text-danger"></span>
+                    </div>
+
+                    <div class="strategy-create-choice-row">
+
+                        <fieldset class="strategy-editor-choice-group">
+                            <legend>Camp</legend>
+
+                            <div class="strategy-editor-choice-options">
+                                <label class="team-calendar-filter calendar-filter-vod-review">
+                                    <input asp-for="Side"
+                                           class="form-check-input"
+                                           type="radio"
+                                           value="@StrategySide.Attack" />
+
+                                    <span class="team-calendar-filter-icon strategy-filter-sword-icon"
+                                          aria-hidden="true">⚔</span>
+
+                                    <span>Attaque</span>
+                                </label>
+
+                                <label class="team-calendar-filter strategy-filter-defense">
+                                    <input asp-for="Side"
+                                           class="form-check-input"
+                                           type="radio"
+                                           value="@StrategySide.Defense" />
+
+                                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                                         viewBox="0 0 16 16"
+                                         aria-hidden="true"
+                                         focusable="false">
+                                        <path fill="currentColor"
+                                              d="M8 0 14 2.25v4.1c0 4.15-2.55 7.55-6 9.65-3.45-2.1-6-5.5-6-9.65v-4.1L8 0Zm0 2.05L4 3.55v2.8c0 3.05 1.7 5.7 4 7.45 2.3-1.75 4-4.4 4-7.45v-2.8L8 2.05Z" />
+                                    </svg>
+
+                                    <span>Défense</span>
+                                </label>
+                            </div>
+
+                            <span asp-validation-for="Side"
+                                  class="text-danger"></span>
+                        </fieldset>
+
+                        <fieldset class="strategy-editor-choice-group">
+                            <legend>État</legend>
+
+                            <div class="strategy-editor-choice-options">
+                                <label class="team-calendar-filter calendar-filter-completed">
+                                    <input asp-for="IsActive"
+                                           class="form-check-input"
+                                           type="radio"
+                                           value="true" />
+
+                                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                                         viewBox="0 0 16 16"
+                                         aria-hidden="true"
+                                         focusable="false">
+                                        <path fill="none"
+                                              stroke="currentColor"
+                                              stroke-linecap="round"
+                                              stroke-linejoin="round"
+                                              stroke-width="2"
+                                              d="M2.5 8.5 6.25 12 13.5 4" />
+                                    </svg>
+
+                                    <span>Active</span>
+                                </label>
+
+                                <label class="team-calendar-filter calendar-filter-cancelled">
+                                    <input asp-for="IsActive"
+                                           class="form-check-input"
+                                           type="radio"
+                                           value="false" />
+
+                                    <svg class="team-calendar-filter-icon strategy-filter-svg-icon"
+                                         viewBox="0 0 16 16"
+                                         aria-hidden="true"
+                                         focusable="false">
+                                        <path fill="none"
+                                              stroke="currentColor"
+                                              stroke-linecap="round"
+                                              stroke-width="2"
+                                              d="M3 3 13 13M13 3 3 13" />
+                                    </svg>
+
+                                    <span>Inactive</span>
+                                </label>
+                            </div>
+
+                            <span asp-validation-for="IsActive"
+                                  class="text-danger"></span>
+                        </fieldset>
+
+                    </div>
+
+                    <div class="strategy-editor-field">
+                        <label asp-for="ExternalUrl">URL externe</label>
+
+                        <input asp-for="ExternalUrl"
+                               class="form-control"
+                               type="url"
+                               maxlength="2048"
+                               placeholder="https://..." />
+
+                        <span asp-validation-for="ExternalUrl"
+                              class="text-danger"></span>
+                    </div>
+
+                    <div class="strategy-editor-field">
+                        <label asp-for="Image">Image</label>
+
+                        <input asp-for="Image"
+                               class="form-control"
+                               type="file"
+                               accept="image/png,image/jpeg,image/webp"
+                               data-strategy-image-input />
+
+                        <div class="form-text">
+                            PNG, JPEG ou WebP. La miniature sera générée automatiquement.
+                        </div>
+
+                        <span asp-validation-for="Image"
+                              class="text-danger"></span>
+                    </div>
+
+                    <div class="strategy-editor-field strategy-create-description">
+                        <label asp-for="Description">Description</label>
+
+                        <textarea asp-for="Description"
+                                  class="form-control"
+                                  rows="3"
+                                  maxlength="5000"></textarea>
+
+                        <span asp-validation-for="Description"
+                              class="text-danger"></span>
+                    </div>
+
+                </div>
+
+                <div class="strategy-create-right">
+                    <div class="strategy-image-preview-large"
+                         data-strategy-image-preview>
+
+                        <div class="strategy-image-preview-placeholder"
+                             data-strategy-image-preview-placeholder>
+                            <i class="bi bi-image"
+                               aria-hidden="true"></i>
+
+                            <span>Aucune image</span>
+                        </div>
+
+                        <img src=""
+                             alt="Aperçu de l’image sélectionnée"
+                             hidden
+                             data-strategy-image-preview-content />
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="strategy-editor-footer">
+                <p class="strategy-editor-content-help">
+                    Ajoutez au moins une description, une URL externe ou une image.
+                </p>
+
+                <div class="strategy-editor-actions">
+                    <a asp-controller="Strategies"
+                       asp-action="Index"
+                       asp-route-teamId="@Model.TeamId"
+                       class="btn btn-outline-secondary">
+                        Annuler
+                    </a>
+
+                    <button type="submit"
+                            class="btn btn-primary">
+                        Créer la stratégie
+                    </button>
+                </div>
+            </div>
+
+        </form>
+    </section>
+</section>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/strategy-image-preview.js"
+            asp-append-version="true"
+            defer></script>
+}

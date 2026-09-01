@@ -5,6 +5,7 @@ using EsportTeamManager.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.ViewModels.Strategies;
+using EsportTeamManager.Application.Images;
 
 namespace RepriseWeb.Controllers;
 
@@ -16,12 +17,16 @@ public sealed class StrategiesController : Controller
     private readonly IMapCatalogService _mapCatalogService;
     private readonly IStrategyListService _strategyListService;
     private readonly IUserTeamService _userTeamService;
+    private readonly IStrategyEditingService _strategyEditingService;
+    private readonly IPrivateImageService _privateImageService;
 
-    public StrategiesController(IMapCatalogService mapCatalogService, IStrategyListService strategyListService, IUserTeamService userTeamService)
+    public StrategiesController(IMapCatalogService mapCatalogService, IStrategyListService strategyListService, IStrategyEditingService strategyEditingService, IUserTeamService userTeamService, IPrivateImageService privateImageService)
     {
         _mapCatalogService = mapCatalogService;
         _strategyListService = strategyListService;
+        _strategyEditingService = strategyEditingService;
         _userTeamService = userTeamService;
+        _privateImageService = privateImageService;
     }
 
     [HttpGet]
@@ -45,6 +50,8 @@ public sealed class StrategiesController : Controller
         {
             return Forbid();
         }
+
+        bool canCreateStrategy = await _strategyEditingService.CanManageAsync(currentUserId.Value, teamId, cancellationToken);
 
         if (!ModelState.IsValid)
         {
@@ -99,6 +106,7 @@ public sealed class StrategiesController : Controller
                 CreateSideLabel(strategy.Side),
                 strategy.IsActive ? "Active" : "Inactive",
                 strategy.IsActive,
+                strategy.HasImage,
                 strategy.UpdatedAtUtc))
             .ToArray();
 
@@ -111,9 +119,338 @@ public sealed class StrategiesController : Controller
             selectedSides,
             selectedIncludeActive,
             selectedIncludeInactive,
-            searchText?.Trim());
+            searchText?.Trim(),
+            canCreateStrategy);
 
         return View(viewModel);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Create(Guid teamId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty)
+        {
+            return RedirectToAction("Entry", "Teams");
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null || !await _strategyEditingService.CanManageAsync(currentUserId.Value, teamId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        IReadOnlyCollection<StrategyMapOptionViewModel> maps = await GetMapViewModelsAsync(cancellationToken);
+        StrategyFormViewModel viewModel = new()
+        {
+            TeamId = currentTeam.TeamId,
+            TeamName = currentTeam.Name,
+            Maps = maps,
+            IsActive = true
+        };
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create(StrategyFormViewModel viewModel, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, viewModel.TeamId, cancellationToken);
+
+        if (currentTeam is null || !await _strategyEditingService.CanManageAsync(currentUserId.Value, viewModel.TeamId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        IReadOnlyCollection<StrategyMapOptionViewModel> maps = await GetMapViewModelsAsync(cancellationToken);
+
+        PopulateCreateViewModel(viewModel, currentTeam, maps);
+
+        if (string.IsNullOrWhiteSpace(viewModel.Description) && string.IsNullOrWhiteSpace(viewModel.ExternalUrl) && viewModel.Image is null)
+        {
+            ModelState.AddModelError(string.Empty, "Ajoutez au moins une description, une URL externe ou une image.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(viewModel);
+        }
+
+        SaveStrategyResult result;
+
+        if (viewModel.Image is null)
+        {
+            CreateStrategyRequest request = new(
+                currentUserId.Value,
+                currentTeam.TeamId,
+                viewModel.MapId!.Value,
+                viewModel.Name,
+                viewModel.Side!.Value,
+                viewModel.Description,
+                viewModel.ExternalUrl,
+                viewModel.IsActive,
+                null);
+
+            result = await _strategyEditingService.CreateAsync(request, cancellationToken);
+        }
+        else
+        {
+            await using Stream imageContent = viewModel.Image.OpenReadStream();
+            StrategyImageUpload image = new(viewModel.Image.FileName, imageContent);
+            CreateStrategyRequest request = new(
+                currentUserId.Value,
+                currentTeam.TeamId,
+                viewModel.MapId!.Value,
+                viewModel.Name,
+                viewModel.Side!.Value,
+                viewModel.Description,
+                viewModel.ExternalUrl,
+                viewModel.IsActive,
+                image);
+
+            result = await _strategyEditingService.CreateAsync(request, cancellationToken);
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(viewModel);
+        }
+
+        TempData["SuccessMessage"] = "La stratégie a été créée.";
+
+        return RedirectToAction(nameof(Details), new
+        {
+            teamId = currentTeam.TeamId,
+            strategyId = result.StrategyId
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Image(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty || strategyId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
+        PrivateImageContent? image = await _privateImageService.GetStrategyImageAsync(currentUserId.Value, teamId, strategyId, cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["Cache-Control"] = "private, no-store";
+
+        return File(image.Content, image.MediaType);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Details(Guid teamId, Guid strategyId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        StrategyEditingDetails? details = await _strategyEditingService.GetAsync(currentUserId.Value, teamId, strategyId, cancellationToken);
+
+        if (details is null)
+        {
+            return NotFound();
+        }
+
+        IReadOnlyCollection<StrategyMapOptionViewModel> maps = await GetMapViewModelsAsync(cancellationToken);
+        StrategyDetailsViewModel viewModel = CreateDetailsViewModel(details, maps);
+
+        return View(viewModel);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Details(Guid teamId, Guid strategyId, StrategyDetailsViewModel viewModel, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        StrategyEditingDetails? currentDetails = await _strategyEditingService.GetAsync(currentUserId.Value, teamId, strategyId, cancellationToken);
+
+        if (currentDetails is null)
+        {
+            return NotFound();
+        }
+
+        if (!currentDetails.CanManage)
+        {
+            return Forbid();
+        }
+
+        IReadOnlyCollection<StrategyMapOptionViewModel> maps = await GetMapViewModelsAsync(cancellationToken);
+
+        PopulateDetailsViewModel(viewModel, currentDetails, maps);
+
+        if (!currentDetails.HasImage && string.IsNullOrWhiteSpace(viewModel.Description) && string.IsNullOrWhiteSpace(viewModel.ExternalUrl) && viewModel.Image is null)
+        {
+            ModelState.AddModelError(string.Empty, "Conservez au moins une description, une URL externe ou une image.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(viewModel);
+        }
+
+        SaveStrategyResult result;
+
+        if (viewModel.Image is null)
+        {
+            UpdateStrategyRequest request = new(
+                currentUserId.Value,
+                teamId,
+                strategyId,
+                viewModel.MapId!.Value,
+                viewModel.Name,
+                viewModel.Side!.Value,
+                viewModel.Description,
+                viewModel.ExternalUrl,
+                viewModel.IsActive,
+                null);
+
+            result = await _strategyEditingService.UpdateAsync(request, cancellationToken);
+        }
+        else
+        {
+            await using Stream imageContent = viewModel.Image.OpenReadStream();
+            StrategyImageUpload image = new(viewModel.Image.FileName, imageContent);
+            UpdateStrategyRequest request = new(
+                currentUserId.Value,
+                teamId,
+                strategyId,
+                viewModel.MapId!.Value,
+                viewModel.Name,
+                viewModel.Side!.Value,
+                viewModel.Description,
+                viewModel.ExternalUrl,
+                viewModel.IsActive,
+                image);
+
+            result = await _strategyEditingService.UpdateAsync(request, cancellationToken);
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            return View(viewModel);
+        }
+
+        TempData["SuccessMessage"] = "La stratégie a été modifiée.";
+
+        return RedirectToAction(nameof(Details), new
+        {
+            teamId,
+            strategyId
+        });
+    }
+
+    private async Task<IReadOnlyCollection<StrategyMapOptionViewModel>> GetMapViewModelsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<MapOption> maps = await _mapCatalogService.GetOptionsAsync(cancellationToken);
+
+        return maps
+            .Select(map => new StrategyMapOptionViewModel(map.MapId, map.Name))
+            .ToArray();
+    }
+
+    private static void PopulateCreateViewModel(StrategyFormViewModel viewModel, UserTeamSummary team, IReadOnlyCollection<StrategyMapOptionViewModel> maps)
+    {
+        viewModel.TeamId = team.TeamId;
+        viewModel.TeamName = team.Name;
+        viewModel.Maps = maps;
+    }
+
+    private static StrategyDetailsViewModel CreateDetailsViewModel(StrategyEditingDetails details, IReadOnlyCollection<StrategyMapOptionViewModel> maps)
+    {
+        StrategyDetailsViewModel viewModel = new()
+        {
+            TeamId = details.TeamId,
+            StrategyId = details.StrategyId,
+            TeamName = details.TeamName,
+            Maps = maps,
+            Name = details.Name,
+            MapId = details.MapId,
+            Side = details.Side,
+            Description = details.Description,
+            ExternalUrl = details.ExternalUrl,
+            IsActive = details.IsActive
+        };
+
+        PopulateDetailsViewModel(viewModel, details, maps);
+
+        return viewModel;
+    }
+
+    private static void PopulateDetailsViewModel(StrategyDetailsViewModel viewModel, StrategyEditingDetails details, IReadOnlyCollection<StrategyMapOptionViewModel> maps)
+    {
+        viewModel.TeamId = details.TeamId;
+        viewModel.StrategyId = details.StrategyId;
+        viewModel.TeamName = details.TeamName;
+        viewModel.Maps = maps;
+        viewModel.CurrentName = details.Name;
+        viewModel.MapName = maps.SingleOrDefault(map => map.MapId == details.MapId)?.Name ?? "Carte inconnue";
+        viewModel.SideLabel = CreateSideLabel(details.Side);
+        viewModel.StatusLabel = details.IsActive ? "Active" : "Inactive";
+        viewModel.CurrentDescription = details.Description;
+        viewModel.CurrentExternalUrl = details.ExternalUrl;
+        viewModel.HasImage = details.HasImage;
+        viewModel.CanManage = details.CanManage;
     }
 
     private async Task<UserTeamSummary?> FindCurrentTeamAsync(Guid userId, Guid teamId, CancellationToken cancellationToken)

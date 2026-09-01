@@ -3607,3 +3607,1144 @@ select.team-information-control option
 {
     width: 100%;
 }
+
+.strategy-create-button
+{
+    display: inline-flex;
+    white-space: nowrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.strategy-card-link
+{
+    display: block;
+    min-width: 0;
+    border-radius: 0.75rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.strategy-card-link .strategy-card
+{
+    height: 100%;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.strategy-card-link:hover .strategy-card
+{
+    border-color: color-mix(in srgb, var(--app-primary) 70%, var(--app-border));
+    box-shadow: 0 0.75rem 1.75rem rgba(0, 0, 0, 0.18);
+    transform: translateY(-2px);
+}
+
+.strategy-card-link:focus-visible
+{
+    outline: 3px solid color-mix(in srgb, var(--app-primary) 65%, transparent);
+    outline-offset: 3px;
+}
+
+.strategy-editor-page,
+.strategy-details-page
+{
+    display: flex;
+    gap: 1.5rem;
+    flex-direction: column;
+}
+
+.strategy-editor-header
+{
+    display: flex;
+    gap: 0.75rem;
+    flex-direction: column;
+}
+
+.strategy-editor-back-link
+{
+    display: inline-flex;
+    width: fit-content;
+    color: var(--app-primary);
+    gap: 0.4rem;
+    align-items: center;
+    text-decoration: none;
+}
+
+.strategy-editor-back-link:hover
+{
+    text-decoration: underline;
+}
+
+.strategy-editor-panel,
+.strategy-details-panel
+{
+    padding: 1.25rem;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: var(--app-surface);
+}
+
+.strategy-editor-page > .strategy-editor-panel
+{
+    width: 100%;
+    max-width: 58rem;
+}
+
+.strategy-editor-grid
+{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.strategy-editor-field
+{
+    min-width: 0;
+}
+
+.strategy-editor-field-wide
+{
+    grid-column: 1 / -1;
+}
+
+.strategy-editor-field .form-control,
+.strategy-editor-field .form-select
+{
+    border-color: var(--app-border);
+    background-color: var(--app-surface-elevated);
+    color: var(--app-text);
+}
+
+.strategy-editor-field textarea
+{
+    min-height: 9rem;
+    resize: vertical;
+}
+
+.strategy-editor-content-rule
+{
+    margin: 1rem 0 0;
+    color: var(--app-text-muted);
+    font-size: 0.875rem;
+}
+
+.strategy-editor-actions
+{
+    display: flex;
+    margin-top: 1.25rem;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.strategy-details-layout
+{
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.strategy-details-layout-readonly
+{
+    max-width: 48rem;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.strategy-details-heading
+{
+    display: flex;
+    margin-bottom: 1rem;
+    gap: 1rem;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.strategy-details-image
+{
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-primary) 75%, var(--app-border));
+    border-radius: 0.5rem;
+    aspect-ratio: 1;
+    background:
+        linear-gradient(150deg, transparent 48%, color-mix(in srgb, var(--app-primary) 75%, transparent) 49%, color-mix(in srgb, var(--app-primary) 75%, transparent) 51%, transparent 52%),
+        var(--app-surface-elevated);
+    color: var(--app-text-muted);
+    align-items: center;
+    justify-content: center;
+}
+
+.strategy-details-section
+{
+    margin-top: 1.25rem;
+}
+
+.strategy-details-section h3
+{
+    color: var(--app-primary);
+}
+
+.strategy-details-description
+{
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 991.98px)
+{
+    .strategy-details-layout
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-details-panel,
+    .strategy-editor-panel
+    {
+        width: 100%;
+    }
+}
+
+@media (max-width: 767.98px)
+{
+    .strategy-list-header
+    {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .strategy-create-button
+    {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .strategy-editor-grid
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-editor-field-wide
+    {
+        grid-column: auto;
+    }
+
+    .strategy-editor-actions
+    {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .strategy-editor-actions .btn
+    {
+        width: 100%;
+    }
+}
+
+.strategy-create-page
+{
+    gap: 0.75rem;
+}
+
+.strategy-create-page .strategy-editor-header
+{
+    gap: 0.35rem;
+}
+
+.strategy-create-page > .strategy-editor-panel
+{
+    width: 100%;
+    max-width: none;
+    padding: 1rem;
+}
+
+.strategy-create-page .strategy-editor-grid
+{
+    display: grid;
+    grid-template-areas:
+        "name state"
+        "map side"
+        "description url"
+        "description image";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.65rem 1rem;
+}
+
+.strategy-create-name
+{
+    grid-area: name;
+}
+
+.strategy-create-state
+{
+    grid-area: state;
+}
+
+.strategy-create-map
+{
+    grid-area: map;
+}
+
+.strategy-create-side
+{
+    grid-area: side;
+}
+
+.strategy-create-description
+{
+    display: flex;
+    grid-area: description;
+    flex-direction: column;
+}
+
+.strategy-create-description textarea
+{
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+.strategy-create-url
+{
+    grid-area: url;
+}
+
+.strategy-create-image
+{
+    grid-area: image;
+}
+
+.strategy-create-page .strategy-editor-content-rule
+{
+    margin-top: 0.5rem;
+}
+
+.strategy-create-page .strategy-editor-actions
+{
+    margin-top: 0.5rem;
+}
+
+.strategy-image-upload-layout
+{
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 6rem;
+    gap: 1rem;
+    align-items: center;
+}
+
+.strategy-image-preview
+{
+    width: 6rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-primary) 75%, var(--app-border));
+    border-radius: 0.5rem;
+    aspect-ratio: 1;
+    background: var(--app-surface-elevated);
+}
+
+.strategy-image-preview[hidden]
+{
+    display: none;
+}
+
+.strategy-image-preview img
+{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+@media (max-width: 767.98px)
+{
+    .strategy-filter-reset,
+    .strategy-create-button
+    {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .strategy-image-upload-layout
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-image-preview
+    {
+        width: min(100%, 12rem);
+    }
+
+    .strategy-create-page .strategy-editor-grid
+    {
+        grid-template-areas:
+            "name"
+            "state"
+            "map"
+            "side"
+            "description"
+            "url"
+            "image";
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-create-description textarea
+    {
+        min-height: 7rem;
+    }
+}
+
+.strategy-editor-page.strategy-create-page
+{
+    gap: 0.75rem;
+}
+
+.strategy-editor-page.strategy-create-page > .strategy-editor-panel
+{
+    width: 100%;
+    max-width: none;
+    padding: 1rem;
+}
+
+.strategy-create-page .strategy-editor-header
+{
+    gap: 0.35rem;
+}
+
+.strategy-create-grid
+{
+    display: grid;
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem 1rem;
+}
+
+.strategy-create-grid > *
+{
+    grid-area: auto;
+    grid-column: auto;
+}
+
+.strategy-create-description
+{
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.strategy-create-description textarea
+{
+    min-height: 10rem;
+    flex: 1 1 auto;
+}
+
+.strategy-create-resources
+{
+    display: grid;
+    min-width: 0;
+    gap: 0.75rem;
+}
+
+.strategy-create-page .strategy-image-upload-layout
+{
+    grid-template-columns: minmax(0, 1fr) 6rem;
+}
+
+.strategy-create-page .strategy-image-preview
+{
+    width: 6rem;
+}
+
+.strategy-create-footer
+{
+    display: flex;
+    margin-top: 0.75rem;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.strategy-create-footer .strategy-editor-content-rule,
+.strategy-create-footer .strategy-editor-actions
+{
+    margin: 0;
+}
+
+@media (max-width: 767.98px)
+{
+    .strategy-create-grid
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-create-description textarea
+    {
+        min-height: 7rem;
+    }
+
+    .strategy-create-footer
+    {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .strategy-create-page .strategy-image-upload-layout
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-create-page .strategy-image-preview
+    {
+        width: min(100%, 16rem);
+        max-width: 16rem;
+    }
+}
+
+.strategy-create-choice-group
+{
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.strategy-create-choice-group legend
+{
+    width: 100%;
+    margin-bottom: 0.5rem;
+    float: none;
+    color: var(--app-text);
+    font-size: 1rem;
+}
+
+.strategy-create-choice-group .strategy-filter-options
+{
+    min-height: 2.4rem;
+    gap: 1rem;
+    align-items: center;
+}
+
+.strategy-create-choice-group .team-calendar-filter
+{
+    font-size: 1rem;
+}
+
+.strategy-create-page .strategy-image-upload-layout
+{
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+    align-items: start;
+}
+
+.strategy-create-page .strategy-image-preview
+{
+    width: 100%;
+    max-width: 16rem;
+}
+
+.strategy-editor-page.strategy-create-page > .strategy-editor-panel
+{
+    width: 100%;
+    max-width: none;
+}
+
+.strategy-create-columns
+{
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(20rem, 1.1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.strategy-create-left
+{
+    display: grid;
+    min-width: 0;
+    gap: 0.65rem;
+}
+
+.strategy-create-right  
+{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 100%;
+}
+
+.strategy-create-right .strategy-create-description
+{
+    display: block;
+    width: 100%;
+}
+
+.strategy-create-right .strategy-create-description textarea
+{
+    min-height: 7rem;
+}
+
+.strategy-image-preview-large
+{
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-primary) 75%, var(--app-border));
+    border-radius: 0.65rem;
+    aspect-ratio: 4833 / 2403;
+    background:
+        linear-gradient(150deg, transparent 48%, color-mix(in srgb, var(--app-primary) 75%, transparent) 49%, color-mix(in srgb, var(--app-primary) 75%, transparent) 51%, transparent 52%),
+        var(--app-surface-elevated);
+    color: var(--app-text-muted);
+    align-items: center;
+    justify-content: center;
+}
+
+.strategy-image-preview-large img
+{
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.strategy-image-preview-large span
+{
+    font-weight: 600;
+}
+
+@media (max-width: 991.98px)
+{
+    .strategy-create-columns
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.strategy-create-right
+{
+    justify-content: center;
+}
+
+.strategy-create-left .strategy-create-description
+{
+    display: block;
+    width: 100%;
+}
+
+.strategy-create-left .strategy-create-description textarea
+{
+    min-height: 4.75rem;
+    max-height: 7rem;
+    resize: vertical;
+}
+
+.strategy-create-choice-row
+{
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+@media (max-width: 575.98px)
+{
+    .strategy-create-choice-row
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* STR-003 — disposition définitive de la page de création */
+
+.strategy-create-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(20rem, 1.1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.strategy-create-left {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.strategy-create-left > * {
+    width: 100%;
+    min-width: 0;
+}
+
+.strategy-create-choice-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+.strategy-create-choice-row .strategy-editor-choice-group {
+    min-width: 0;
+    margin: 0;
+}
+
+.strategy-create-description textarea {
+    min-height: 4.75rem;
+    max-height: 7rem;
+    resize: vertical;
+}
+
+.strategy-create-right {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.strategy-image-preview-large {
+    display: flex;
+    width: 100%;
+    aspect-ratio: 4833 / 2403;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-block: auto;
+}
+
+.strategy-image-preview-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+@media (max-width: 991.98px) {
+    .strategy-create-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .strategy-create-choice-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.strategy-editor-choice-group legend {
+    float: none;
+    width: auto;
+    margin-bottom: 0.45rem;
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+.strategy-editor-choice-options {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 1.5rem;
+    row-gap: 0.75rem;
+}
+
+.strategy-editor-choice-options .team-calendar-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 1rem;
+}
+
+.strategy-editor-choice-options .form-check-input {
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: 0;
+}
+
+.strategy-editor-choice-options .team-calendar-filter-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 1.25rem;
+}
+
+/* STR-003 — aération finale du formulaire de création */
+
+.strategy-create-left {
+    gap: 1rem;
+}
+
+.strategy-editor-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.strategy-create-choice-row {
+    margin-block: 0.1rem;
+}
+
+.strategy-editor-choice-group legend {
+    margin-bottom: 0.6rem;
+}
+
+.strategy-editor-content-help {
+    margin: 0;
+    color: var(--bs-secondary-color);
+    font-size: 0.875em;
+    line-height: 1.5;
+}
+
+.strategy-image-preview-large {
+    background: rgba(8, 15, 25, 0.65) !important;
+    background-image: none !important;
+    border-style: dashed;
+}
+
+.strategy-image-preview-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+.strategy-image-preview-placeholder .bi {
+    font-size: 3rem;
+    line-height: 1;
+    opacity: 0.75;
+}
+
+/* STR-003 — réduction de l’espace inférieur du cadre */
+
+.strategy-create-page .strategy-editor-actions {
+    position: relative;
+    transform: translateY(-2.5rem);
+    margin-bottom: -2.5rem;
+}
+
+/* Centrage exact du contenu de l’aperçu */
+
+.strategy-image-preview-large {
+    position: relative;
+}
+
+.strategy-image-preview-placeholder:not([hidden]) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    text-align: center;
+}
+
+/* STR-003 — page de consultation et modification d’une stratégie */
+
+.strategy-details-editor-panel {
+    width: 100%;
+    max-width: none;
+}
+
+.strategy-details-editor-columns {
+    display: grid;
+    grid-template-columns: minmax(24rem, 1.1fr) minmax(0, 0.9fr);
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.strategy-details-image-column {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.strategy-details-image-preview {
+    position: relative;
+    display: flex;
+    width: 100%;
+    aspect-ratio: 4833 / 2403;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(8, 15, 25, 0.65);
+    border: 1px dashed var(--bs-info);
+    border-radius: 0.75rem;
+}
+
+.strategy-details-image-preview img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.strategy-details-image-preview .strategy-image-preview-placeholder:not([hidden]) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+.strategy-details-form-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.strategy-details-form-column > * {
+    width: 100%;
+    min-width: 0;
+}
+
+.strategy-details-editor-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.strategy-details-editor-footer .strategy-editor-content-help {
+    margin: 0;
+}
+
+.strategy-details-editor-footer .strategy-editor-actions {
+    flex: 0 0 auto;
+    transform: none;
+    margin: 0;
+}
+
+@media (max-width: 991.98px) {
+    .strategy-details-editor-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .strategy-details-image-column {
+        order: 2;
+    }
+
+    .strategy-details-form-column {
+        order: 1;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .strategy-details-editor-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .strategy-details-editor-footer .strategy-editor-actions,
+    .strategy-details-editor-footer .btn {
+        width: 100%;
+    }
+}
+
+/* STR-003 — disposition définitive de la page Details */
+
+.strategy-details-page {
+    width: 100%;
+    max-width: none;
+}
+
+.strategy-details-layout {
+    display: grid;
+    width: 100%;
+    max-width: none;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.strategy-details-panel,
+.strategy-details-layout > .strategy-editor-panel {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+}
+
+.strategy-details-image {
+    position: relative;
+    display: flex;
+    width: 100%;
+    aspect-ratio: 4833 / 2403;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(8, 15, 25, 0.65) !important;
+    background-image: none !important;
+    border: 1px dashed var(--bs-info);
+    border-radius: 0.75rem;
+}
+
+.strategy-details-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.strategy-details-image .strategy-image-preview-placeholder:not([hidden]) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+.strategy-details-layout-readonly {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 991.98px) {
+    .strategy-details-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.strategy-details-section,
+.strategy-details-description {
+    width: 100%;
+    text-align: left;
+}
+
+.strategy-details-panel .strategy-details-section {
+    display: block;
+    width: 100%;
+    margin-inline: 0;
+    padding-inline: 0;
+    text-align: left;
+}
+
+.strategy-details-panel .strategy-details-description {
+    display: block;
+    width: 100%;
+    margin-inline: 0 !important;
+    padding-inline: 0 !important;
+    text-align: left !important;
+}
+
+/* STR-003 — images de la liste des stratégies */
+
+.strategy-card-thumbnail {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4833 / 2403;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.strategy-card-thumbnail-image {
+    padding: 0;
+    background: rgba(8, 15, 25, 0.65) !important;
+    background-image: none !important;
+}
+
+.strategy-card-thumbnail-image::before,
+.strategy-card-thumbnail-image::after,
+.strategy-card-thumbnail-default::before,
+.strategy-card-thumbnail-default::after {
+    display: none !important;
+}
+
+.strategy-card-thumbnail-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.strategy-card-thumbnail-default {
+    background: rgba(8, 15, 25, 0.65) !important;
+    background-image: none !important;
+}
+
+.strategy-card-thumbnail-default span {
+    position: relative;
+    inset: auto;
+    margin: 0;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+/* STR-003 — grille responsive définitive des stratégies */
+
+/* Ordinateur : 3 cartes par ligne */
+.strategy-card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+}
+
+/* Tablette : 2 cartes par ligne */
+@media (max-width: 1199.98px) {
+    .strategy-card-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* Mobile : 1 carte par ligne */
+@media (max-width: 767.98px) {
+    .strategy-card-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+    }
+}
+
+/* STR-003 — empêcher les images de dépasser des cartes */
+
+.strategy-card {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.strategy-card-thumbnail {
+    width: auto;
+    max-width: 100%;
+    align-self: stretch;
+    box-sizing: border-box;
+}
+
+.strategy-card-thumbnail-image img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* STR-003 — actions de création sur mobile */
+
+@media (max-width: 575.98px) {
+    .strategy-create-page .strategy-editor-footer {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .strategy-create-page .strategy-editor-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        width: 100%;
+        margin: 0;
+        transform: none;
+    }
+
+    .strategy-create-page .strategy-editor-actions .btn {
+        width: 100%;
+    }
+}

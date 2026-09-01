@@ -20,6 +20,8 @@ public sealed class PrivateImageService : IPrivateImageService
 {
     private const int BufferSize = 81_920;
     private const string StoredMediaType = "image/webp";
+    private const string ManagerRoleCode = "Manager";
+    private const string CoachRoleCode = "Coach";
 
     private static readonly HashSet<string> SupportedSourceMediaTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -100,6 +102,98 @@ public sealed class PrivateImageService : IPrivateImageService
         }
     }
 
+    public async Task<PrivateImageContent?> GetStrategyImageAsync(Guid actorUserId, Guid teamId, Guid strategyId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (actorUserId == Guid.Empty || teamId == Guid.Empty || strategyId == Guid.Empty)
+        {
+            return null;
+        }
+
+        bool userCanAccessStrategy = await _context.TeamMemberships
+            .AsNoTracking()
+            .AnyAsync(membership =>
+                membership.TeamId == teamId
+                && membership.UserId == actorUserId
+                && membership.Status == MembershipStatus.Active,
+                cancellationToken);
+
+        if (!userCanAccessStrategy)
+        {
+            return null;
+        }
+
+        bool strategyBelongsToTeam = await _context.Strategies
+            .AsNoTracking()
+            .AnyAsync(strategy => strategy.StrategyId == strategyId && strategy.TeamId == teamId, cancellationToken);
+
+        if (!strategyBelongsToTeam)
+        {
+            return null;
+        }
+
+        var imageData = await _context.ImageFiles
+            .AsNoTracking()
+            .Where(image => image.StrategyImageForStrategyId == strategyId)
+            .Select(image => new
+            {
+                image.OptimizedStorageKey,
+                image.MediaType
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (imageData is null)
+        {
+            return null;
+        }
+
+        string physicalPath = GetPhysicalPath(imageData.OptimizedStorageKey);
+
+        try
+        {
+            FileStream content = new(physicalPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            return new PrivateImageContent(content, imageData.MediaType);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "Private strategy image reading failed for strategy {StrategyId}.", strategyId);
+
+            return null;
+        }
+    }
+
+    public async Task<StorePrivateImageResult> ReplaceStrategyImageAsync(ReplaceStrategyImageRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.StrategyId == Guid.Empty)
+        {
+            return StorePrivateImageResult.Failure(["La modification de l’image n’est pas autorisée."]);
+        }
+
+        bool actorCanManageStrategy = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.UserId == request.ActorUserId && membership.TeamId == request.TeamId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new { Membership = membership, Team = team })
+            .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new { item.Team, Role = role })
+            .AnyAsync(item =>
+                _context.Strategies.Any(strategy => strategy.StrategyId == request.StrategyId && strategy.TeamId == request.TeamId)
+                && (item.Team.OwnerUserId == request.ActorUserId || item.Role.Code == ManagerRoleCode || item.Role.Code == CoachRoleCode),
+                cancellationToken);
+
+        if (!actorCanManageStrategy)
+        {
+            return StorePrivateImageResult.Failure(["La modification de l’image n’est pas autorisée."]);
+        }
+
+        StorePrivateImageRequest storeRequest = new(request.StrategyId, request.OriginalFileName, request.Content);
+
+        return await StoreAsync(storeRequest, false, _options.StrategyImageMaximumEdgePixels, true, cancellationToken);
+    }
+
     public async Task<StorePrivateImageResult> ReplaceTeamLogoAsync(ReplaceTeamLogoRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -134,7 +228,7 @@ public sealed class PrivateImageService : IPrivateImageService
         return StoreAsync(request, true, _options.TeamLogoMaximumEdgePixels, false, cancellationToken);
     }
 
-    private async Task<StorePrivateImageResult> StoreAsync(StorePrivateImageRequest request, bool isTeamLogo, int maximumEdgePixels, bool replaceExistingTeamLogo, CancellationToken cancellationToken)
+    private async Task<StorePrivateImageResult> StoreAsync(StorePrivateImageRequest request, bool isTeamLogo, int maximumEdgePixels, bool replaceExistingImage, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -144,26 +238,29 @@ public sealed class PrivateImageService : IPrivateImageService
             return StorePrivateImageResult.Failure(["L’image à enregistrer est invalide."]);
         }
 
-        string? ownerValidationError = await GetOwnerValidationErrorAsync(request.OwnerId, isTeamLogo, replaceExistingTeamLogo, cancellationToken);
+        string? ownerValidationError = await GetOwnerValidationErrorAsync(request.OwnerId, isTeamLogo, replaceExistingImage, cancellationToken);
 
         if (ownerValidationError is not null)
         {
             return StorePrivateImageResult.Failure([ownerValidationError]);
         }
 
-        ImageFile? existingTeamLogo = null;
+        ImageFile? existingImage = null;
         string? previousOptimizedPhysicalPath = null;
         string? previousThumbnailPhysicalPath = null;
 
-        if (isTeamLogo && replaceExistingTeamLogo)
+        if (replaceExistingImage)
         {
-            existingTeamLogo = await _context.ImageFiles
-                .SingleOrDefaultAsync(image => image.TeamLogoForTeamId == request.OwnerId, cancellationToken);
+            existingImage = await _context.ImageFiles.SingleOrDefaultAsync(
+                image => isTeamLogo
+                    ? image.TeamLogoForTeamId == request.OwnerId
+                    : image.StrategyImageForStrategyId == request.OwnerId,
+                cancellationToken);
 
-            if (existingTeamLogo is not null)
+            if (existingImage is not null)
             {
-                previousOptimizedPhysicalPath = GetPhysicalPath(existingTeamLogo.OptimizedStorageKey);
-                previousThumbnailPhysicalPath = GetPhysicalPath(existingTeamLogo.ThumbnailStorageKey);
+                previousOptimizedPhysicalPath = GetPhysicalPath(existingImage.OptimizedStorageKey);
+                previousThumbnailPhysicalPath = GetPhysicalPath(existingImage.ThumbnailStorageKey);
             }
         }
 
@@ -211,10 +308,10 @@ public sealed class PrivateImageService : IPrivateImageService
             DateTimeOffset createdAtUtc = _timeProvider.GetUtcNow();
             ImageFile imageFile;
 
-            if (existingTeamLogo is not null)
+            if (existingImage is not null)
             {
-                existingTeamLogo.ReplaceStoredContent(internalFileName, request.OriginalFileName, StoredMediaType, optimizedFileSizeBytes, optimizedImage.Width, optimizedImage.Height, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
-                imageFile = existingTeamLogo;
+                existingImage.ReplaceStoredContent(internalFileName, request.OriginalFileName, StoredMediaType, optimizedFileSizeBytes, optimizedImage.Width, optimizedImage.Height, optimizedStorageKey, thumbnailStorageKey, createdAtUtc);
+                imageFile = existingImage;
             }
             else
             {
@@ -277,7 +374,7 @@ public sealed class PrivateImageService : IPrivateImageService
         }
     }
 
-    private async Task<string?> GetOwnerValidationErrorAsync(Guid ownerId, bool isTeamLogo, bool replaceExistingTeamLogo, CancellationToken cancellationToken)
+    private async Task<string?> GetOwnerValidationErrorAsync(Guid ownerId, bool isTeamLogo, bool replaceExistingImage, CancellationToken cancellationToken)
     {
         if (isTeamLogo)
         {
@@ -288,7 +385,7 @@ public sealed class PrivateImageService : IPrivateImageService
                 return "L’équipe associée au logo est introuvable.";
             }
 
-            if (!replaceExistingTeamLogo)
+            if (!replaceExistingImage)
             {
                 bool teamAlreadyHasLogo = await _context.ImageFiles.AsNoTracking().AnyAsync(image => image.TeamLogoForTeamId == ownerId, cancellationToken);
 
@@ -310,7 +407,7 @@ public sealed class PrivateImageService : IPrivateImageService
 
         bool strategyAlreadyHasImage = await _context.ImageFiles.AsNoTracking().AnyAsync(image => image.StrategyImageForStrategyId == ownerId, cancellationToken);
 
-        if (strategyAlreadyHasImage)
+        if (!replaceExistingImage && strategyAlreadyHasImage)
         {
             return "Une image est déjà enregistrée pour cette stratégie.";
         }
