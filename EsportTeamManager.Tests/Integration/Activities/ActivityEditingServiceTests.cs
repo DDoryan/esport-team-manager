@@ -1461,6 +1461,136 @@ public sealed class ActivityEditingServiceTests
         Assert.Empty(await context.ActivityStrategies.AsNoTracking().ToListAsync());
     }
 
+    [Fact]
+    public async Task DeleteAsync_WhenOwnerDeletesActivity_RemovesDependenciesAndPreservesStrategies()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        Guid activityId = await CreateCompletedMatchActivityAsync(context, team);
+        Strategy strategy = await CreateStrategyAsync(context, team, "Attaque du site A", true);
+
+        context.ActivityLinks.Add(new ActivityLink(activityId, "Analyse", "https://example.test/analyse"));
+        context.ActivityStrategies.Add(new ActivityStrategy(activityId, strategy.StrategyId));
+        await context.SaveChangesAsync();
+
+        DeleteActivityRequest request = new(owner.Id, team.TeamId, activityId);
+
+        DeleteActivityResult result = await activityEditingService.DeleteAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+        Assert.Equal(1, result.DeletedParticipantCount);
+        Assert.Equal(1, result.DeletedLinkCount);
+        Assert.Equal(1, result.DeletedStrategyAssociationCount);
+
+        context.ChangeTracker.Clear();
+
+        Assert.False(await context.TeamActivities.AsNoTracking().AnyAsync(activity => activity.ActivityId == activityId));
+        Assert.False(await context.ActivityParticipants.AsNoTracking().AnyAsync(participant => participant.ActivityId == activityId));
+        Assert.False(await context.MatchDetails.AsNoTracking().AnyAsync(matchDetail => matchDetail.ActivityId == activityId));
+        Assert.False(await context.ActivityLinks.AsNoTracking().AnyAsync(link => link.ActivityId == activityId));
+        Assert.False(await context.ActivityStrategies.AsNoTracking().AnyAsync(association => association.ActivityId == activityId));
+        Assert.True(await context.Strategies.AsNoTracking().AnyAsync(item => item.StrategyId == strategy.StrategyId));
+        Assert.True(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "ACTIVITY_DELETED"));
+    }
+
+    [Theory]
+    [InlineData("Manager")]
+    [InlineData("Coach")]
+    public async Task DeleteAsync_WhenAuthorizedStaffDeletesActivity_Succeeds(string roleCode)
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser staff = await CreateUserAsync(userManager, $"{roleCode.ToLowerInvariant()}@example.test", roleCode, "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        await AddMembershipAsync(context, team.TeamId, staff, roleCode);
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        DeleteActivityRequest request = new(staff.Id, team.TeamId, activityId);
+
+        DeleteActivityResult result = await activityEditingService.DeleteAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        Assert.False(await context.TeamActivities.AsNoTracking().AnyAsync(activity => activity.ActivityId == activityId));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenPlayerAttemptsDeletion_ReturnsFailureWithoutDeletingActivity()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser player = await CreateUserAsync(userManager, "player@example.test", "Player", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        await AddMembershipAsync(context, team.TeamId, player, "Player");
+        Guid activityId = await CreatePlannedActivityAsync(context, team);
+
+        DeleteActivityRequest request = new(player.Id, team.TeamId, activityId);
+
+        DeleteActivityResult result = await activityEditingService.DeleteAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.NotEmpty(result.Errors);
+        Assert.True(await context.TeamActivities.AsNoTracking().AnyAsync(activity => activity.ActivityId == activityId));
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "ACTIVITY_DELETED"));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenActivityDoesNotBelongToTeam_ReturnsFailureWithoutDeletingActivity()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IActivityEditingService activityEditingService = scope.ServiceProvider.GetRequiredService<IActivityEditingService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser otherOwner = await CreateUserAsync(userManager, "other@example.test", "Other", "B02");
+        TeamSetup team = await CreateTeamAsync(context, owner);
+        TeamSetup otherTeam = await CreateTeamAsync(context, otherOwner, "Neon Academy", "NEO");
+        Guid otherActivityId = await CreatePlannedActivityAsync(context, otherTeam);
+
+        DeleteActivityRequest request = new(owner.Id, team.TeamId, otherActivityId);
+
+        DeleteActivityResult result = await activityEditingService.DeleteAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.NotEmpty(result.Errors);
+        Assert.True(await context.TeamActivities.AsNoTracking().AnyAsync(activity => activity.ActivityId == otherActivityId));
+        Assert.False(await context.ActionTraces.AsNoTracking().AnyAsync(trace => trace.ActionCode == "ACTIVITY_DELETED"));
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();

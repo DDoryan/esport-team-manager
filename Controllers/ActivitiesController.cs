@@ -365,6 +365,65 @@ public class ActivitiesController : Controller
         return RedirectToAction(nameof(Edit), new { teamId = model.TeamId, activityId = model.ActivityId });
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(Guid teamId, Guid activityId, CancellationToken cancellationToken)
+    {
+        Guid? currentUserId = GetCurrentUserId();
+
+        if (!currentUserId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (teamId == Guid.Empty || activityId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        UserTeamSummary? currentTeam = await FindCurrentTeamAsync(currentUserId.Value, teamId, cancellationToken);
+
+        if (currentTeam is null)
+        {
+            return Forbid();
+        }
+
+        DeleteActivityRequest request = new(currentUserId.Value, teamId, activityId);
+        DeleteActivityResult result = await _activityEditingService.DeleteAsync(request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            TempData["ErrorMessage"] = string.Join(" ", result.Errors);
+
+            return RedirectToAction(nameof(Edit), new { teamId, activityId });
+        }
+
+        string participantMessage = result.DeletedParticipantCount switch
+        {
+            0 => "Aucun participant n’était associé.",
+            1 => "1 participant et sa présence éventuelle ont été supprimés.",
+            _ => $"{result.DeletedParticipantCount} participants et leurs présences éventuelles ont été supprimés."
+        };
+
+        string linkMessage = result.DeletedLinkCount switch
+        {
+            0 => "Aucun lien n’était associé.",
+            1 => "1 lien a été supprimé.",
+            _ => $"{result.DeletedLinkCount} liens ont été supprimés."
+        };
+
+        string strategyAssociationMessage = result.DeletedStrategyAssociationCount switch
+        {
+            0 => "Aucune stratégie n’était associée.",
+            1 => "1 association de stratégie a été supprimée.",
+            _ => $"{result.DeletedStrategyAssociationCount} associations de stratégies ont été supprimées."
+        };
+
+        TempData["SuccessMessage"] = $"L’activité a été supprimée. {participantMessage} {linkMessage} {strategyAssociationMessage} Les stratégies ont été conservées.";
+
+        return RedirectToAction(nameof(Index), new { teamId });
+    }
+
     [HttpGet]
     public async Task<IActionResult> Events(Guid teamId, DateTimeOffset? start, DateTimeOffset? end, string? types = null, string? statuses = null, string? participant = null, MatchResult? result = null, string? searchText = null, CancellationToken cancellationToken = default)
     {
