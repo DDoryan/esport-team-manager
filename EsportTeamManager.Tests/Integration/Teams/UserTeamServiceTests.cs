@@ -1851,6 +1851,155 @@ public sealed class UserTeamServiceTests
         Assert.Null(unchangedTeam.Description);
     }
 
+    [Fact]
+    public async Task DeleteTeamAsync_WhenOwnerConfirmsName_DeletesCompleteTeamGraphAndPreservesReferencesAndTraces()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser member = await CreateUserAsync(userManager, "member@example.test", "Member", "B02");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        TeamRole customRole = new(100, "Analyst", "Analyste", false, teamId);
+        ActivityType customActivityType = new(100, "Coaching", "Coaching", false, teamId);
+        TeamMembership memberMembership = new(Guid.NewGuid(), teamId, member.Id, customRole.TeamRoleId, nowUtc);
+        FormerMember formerMember = new(Guid.NewGuid(), teamId, 1, nowUtc);
+        Invitation invitation = new(Guid.NewGuid(), teamId, owner.Id, member.Id, customRole.TeamRoleId, nowUtc);
+        OwnershipTransfer ownershipTransfer = new(Guid.NewGuid(), teamId, ownerMembership.TeamMembershipId, memberMembership.TeamMembershipId, nowUtc);
+        Notification invitationNotification = Notification.CreateForInvitation(Guid.NewGuid(), member.Id, invitation.InvitationId, nowUtc);
+        Notification transferNotification = Notification.CreateForOwnershipTransfer(Guid.NewGuid(), member.Id, ownershipTransfer.OwnershipTransferId, nowUtc);
+        Strategy strategy = new(teamId, ownerMembership.TeamMembershipId, 1, "Exécution site A", StrategySide.Attack, "Description de la stratégie.", null, nowUtc);
+        Guid activityId = Guid.NewGuid();
+        TeamActivity activity = new(activityId, teamId, customActivityType, ownerMembership.TeamMembershipId, nowUtc.AddDays(1), nowUtc.AddDays(1).AddHours(2), "Europe/Paris", [ownerMembership.TeamMembershipId, memberMembership.TeamMembershipId], nowUtc, "Session collective");
+        ActivityLink activityLink = new(activityId, "Compte rendu", "https://example.test/compte-rendu");
+        ActivityStrategy activityStrategy = new(activityId, strategy.StrategyId);
+        ImageFile teamLogo = ImageFile.CreateTeamLogo(teamId, $"{Guid.NewGuid():N}.webp", "logo.png", "image/webp", 100, 128, 128, $"team-logos/{teamId:N}/logo.webp", $"team-logos/{teamId:N}/logo-thumbnail.webp", nowUtc);
+        ImageFile strategyImage = ImageFile.CreateStrategyImage(strategy.StrategyId, $"{Guid.NewGuid():N}.webp", "strategy.png", "image/webp", 100, 128, 128, $"strategy-images/{strategy.StrategyId:N}/strategy.webp", $"strategy-images/{strategy.StrategyId:N}/strategy-thumbnail.webp", nowUtc);
+
+        context.AddRange(customRole, customActivityType, memberMembership, formerMember, invitation, ownershipTransfer, invitationNotification, transferNotification, strategy, activity, activityLink, activityStrategy, teamLogo, strategyImage);
+
+        await context.SaveChangesAsync();
+
+        int mapCountBeforeDeletion = await context.Maps.CountAsync();
+        int systemRoleCountBeforeDeletion = await context.TeamRoles.CountAsync(role => role.IsSystem);
+        int systemActivityTypeCountBeforeDeletion = await context.ActivityTypes.CountAsync(activityType => activityType.IsSystem);
+
+        context.ChangeTracker.Clear();
+
+        DeleteTeamRequest request = new(owner.Id, teamId, "  phoenix academy  ");
+
+        DeleteTeamResult result = await teamService.DeleteTeamAsync(request);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.False(result.AccessDenied);
+        Assert.Empty(result.Errors);
+
+        context.ChangeTracker.Clear();
+
+        Assert.False(await context.Teams.AnyAsync(team => team.TeamId == teamId));
+        Assert.False(await context.TeamMemberships.AnyAsync(membership => membership.TeamId == teamId));
+        Assert.False(await context.FormerMembers.AnyAsync(item => item.TeamId == teamId));
+        Assert.False(await context.Invitations.AnyAsync(item => item.TeamId == teamId));
+        Assert.False(await context.OwnershipTransfers.AnyAsync(item => item.TeamId == teamId));
+        Assert.False(await context.Notifications.AnyAsync(item => item.NotificationId == invitationNotification.NotificationId || item.NotificationId == transferNotification.NotificationId));
+        Assert.False(await context.TeamActivities.AnyAsync(item => item.TeamId == teamId));
+        Assert.False(await context.ActivityParticipants.AnyAsync(item => item.ActivityId == activityId));
+        Assert.False(await context.ActivityLinks.AnyAsync(item => item.ActivityId == activityId));
+        Assert.False(await context.ActivityStrategies.AnyAsync(item => item.ActivityId == activityId));
+        Assert.False(await context.Strategies.AnyAsync(item => item.TeamId == teamId));
+        Assert.False(await context.ImageFiles.AnyAsync(item => item.ImageFileId == teamLogo.ImageFileId || item.ImageFileId == strategyImage.ImageFileId));
+        Assert.False(await context.TeamRoles.AnyAsync(role => role.TeamId == teamId));
+        Assert.False(await context.ActivityTypes.AnyAsync(activityType => activityType.TeamId == teamId));
+        Assert.Equal(mapCountBeforeDeletion, await context.Maps.CountAsync());
+        Assert.Equal(systemRoleCountBeforeDeletion, await context.TeamRoles.CountAsync(role => role.IsSystem));
+        Assert.Equal(systemActivityTypeCountBeforeDeletion, await context.ActivityTypes.CountAsync(activityType => activityType.IsSystem));
+
+        List<ActionTrace> traces = await context.ActionTraces.AsNoTracking().Where(trace => trace.ObjectType == nameof(Team) && trace.ObjectIdentifier == teamId.ToString()).ToListAsync();
+        ActionTrace deletionTrace = Assert.Single(traces, trace => trace.ActionCode == "TEAM_DELETED");
+
+        Assert.True(traces.Count >= 2);
+        Assert.All(traces, trace => Assert.Null(trace.TeamId));
+        Assert.Equal(owner.Id, deletionTrace.ActorUserId);
+        Assert.Equal(TraceOutcome.Succeeded, deletionTrace.Outcome);
+    }
+
+    [Fact]
+    public async Task DeleteTeamAsync_WhenConfirmationNameDoesNotMatch_ReturnsFailureWithoutDeletingTeam()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        DeleteTeamRequest request = new(owner.Id, teamId, "Phoenix");
+
+        DeleteTeamResult result = await teamService.DeleteTeamAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.AccessDenied);
+        Assert.NotEmpty(result.Errors);
+        Assert.True(await context.Teams.AnyAsync(team => team.TeamId == teamId));
+        Assert.False(await context.ActionTraces.AnyAsync(trace => trace.ActionCode == "TEAM_DELETED"));
+    }
+
+    [Fact]
+    public async Task DeleteTeamAsync_WhenActorIsNotOwner_ReturnsDeniedWithoutDeletingTeam()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+        ApplicationUser otherUser = await CreateUserAsync(userManager, "other@example.test", "Other", "B02");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        DeleteTeamRequest request = new(otherUser.Id, teamId, "Phoenix Academy");
+
+        DeleteTeamResult result = await teamService.DeleteTeamAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.AccessDenied);
+        Assert.Empty(result.Errors);
+        Assert.True(await context.Teams.AnyAsync(team => team.TeamId == teamId));
+        Assert.False(await context.ActionTraces.AnyAsync(trace => trace.ActionCode == "TEAM_DELETED"));
+    }
+
     private static ServiceProvider CreateServiceProvider(string connectionString)
     {
         ServiceCollection services = new();
@@ -1920,6 +2069,27 @@ public sealed class UserTeamServiceTests
         }
 
         public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task<PrivateImageDeletionBatch> StageTeamImageFilesForDeletionAsync(Guid teamId, IReadOnlyCollection<Guid> strategyIds, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(new PrivateImageDeletionBatch(Guid.NewGuid(), teamId, strategyIds));
+        }
+
+        public Task RestoreStagedTeamImageFilesAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteStagedTeamImageDeletionAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

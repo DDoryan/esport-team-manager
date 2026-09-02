@@ -134,6 +134,95 @@ public sealed class PrivateImageService : IPrivateImageService
         return Task.CompletedTask;
     }
 
+    public Task<PrivateImageDeletionBatch> StageTeamImageFilesForDeletionAsync(Guid teamId, IReadOnlyCollection<Guid> strategyIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(strategyIds);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Guid[] normalizedStrategyIds = strategyIds.Distinct().ToArray();
+
+        if (teamId == Guid.Empty || normalizedStrategyIds.Any(strategyId => strategyId == Guid.Empty))
+        {
+            throw new ArgumentException("The private image deletion identifiers are invalid.");
+        }
+
+        PrivateImageDeletionBatch batch = new(Guid.NewGuid(), teamId, normalizedStrategyIds);
+        IReadOnlyCollection<(string OriginalPath, string StagedPath)> directories = GetImageDeletionDirectories(batch);
+        List<(string OriginalPath, string StagedPath)> movedDirectories = [];
+
+        try
+        {
+            foreach ((string originalPath, string stagedPath) in directories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!Directory.Exists(originalPath))
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(stagedPath)!);
+                Directory.Move(originalPath, stagedPath);
+                movedDirectories.Add((originalPath, stagedPath));
+            }
+        }
+        catch
+        {
+            try
+            {
+                RestoreMovedImageDirectories(movedDirectories);
+            }
+            finally
+            {
+                TryDeleteDirectory(GetImageDeletionStagingRoot(batch), true);
+            }
+
+            throw;
+        }
+
+        return Task.FromResult(batch);
+    }
+
+    public Task RestoreStagedTeamImageFilesAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IReadOnlyCollection<(string OriginalPath, string StagedPath)> directories = GetImageDeletionDirectories(batch);
+
+        foreach ((string originalPath, string stagedPath) in directories.Reverse())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!Directory.Exists(stagedPath))
+            {
+                continue;
+            }
+
+            if (Directory.Exists(originalPath))
+            {
+                throw new IOException($"The private image directory already exists and cannot be restored: {originalPath}");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(originalPath)!);
+            Directory.Move(stagedPath, originalPath);
+        }
+
+        TryDeleteDirectory(GetImageDeletionStagingRoot(batch), true);
+
+        return Task.CompletedTask;
+    }
+
+    public Task CompleteStagedTeamImageDeletionAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TryDeleteDirectory(GetImageDeletionStagingRoot(batch), true);
+
+        return Task.CompletedTask;
+    }
+
     private async Task<PrivateImageContent?> GetStrategyImageContentAsync(Guid actorUserId, Guid teamId, Guid strategyId, bool useThumbnail, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -626,6 +715,66 @@ public sealed class PrivateImageService : IPrivateImageService
         }
 
         return $"{sanitizedName}.webp";
+    }
+
+    private IReadOnlyCollection<(string OriginalPath, string StagedPath)> GetImageDeletionDirectories(PrivateImageDeletionBatch batch)
+    {
+        List<(string OriginalPath, string StagedPath)> directories =
+        [
+            (
+                GetPhysicalPath($"team-logos/{batch.TeamId:N}"),
+                GetPhysicalPath($".temporary/team-deletions/{batch.BatchId:N}/team-logos/{batch.TeamId:N}")
+            )
+        ];
+
+        directories.AddRange(batch.StrategyIds.Select(strategyId =>
+            (
+                GetPhysicalPath($"strategy-images/{strategyId:N}"),
+                GetPhysicalPath($".temporary/team-deletions/{batch.BatchId:N}/strategy-images/{strategyId:N}")
+            )));
+
+        return directories;
+    }
+
+    private string GetImageDeletionStagingRoot(PrivateImageDeletionBatch batch)
+    {
+        return GetPhysicalPath($".temporary/team-deletions/{batch.BatchId:N}");
+    }
+
+    private static void RestoreMovedImageDirectories(IReadOnlyList<(string OriginalPath, string StagedPath)> directories)
+    {
+        for (int index = directories.Count - 1; index >= 0; index--)
+        {
+            (string originalPath, string stagedPath) = directories[index];
+
+            if (!Directory.Exists(stagedPath))
+            {
+                continue;
+            }
+
+            if (Directory.Exists(originalPath))
+            {
+                throw new IOException($"The private image directory already exists and cannot be restored: {originalPath}");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(originalPath)!);
+            Directory.Move(stagedPath, originalPath);
+        }
+    }
+
+    private void TryDeleteDirectory(string directoryPath, bool recursive)
+    {
+        try
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                Directory.Delete(directoryPath, recursive);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "Private image directory cleanup failed for {DirectoryPath}.", directoryPath);
+        }
     }
 
     private string GetPhysicalPath(string storageKey)
