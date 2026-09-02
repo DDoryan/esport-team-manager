@@ -4,14 +4,14 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 
 ## État du projet
 
-- **Jalons atteints :** P0 terminé le 23 août 2026 ; socle Activités terminé le 30 août 2026.
-- **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, puis préversion `v0.2.0-socle-activites` sur le commit vérifié `915cc1e`.
+- **Jalons atteints :** P0 terminé le 23 août 2026 ; premier jalon du socle Activités le 30 août 2026 ; socle Stratégies terminé le 1er septembre 2026 ; socle Activités complet, incluant ACT-009, publié le 2 septembre 2026.
+- **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, préversion `v0.2.0-socle-activites` sur `915cc1e`, release `v0.3.0-socle-strategies` sur `9d77db6`, puis release `v0.4.0-socle-activites-complet` sur `55be486`.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** STR-006 — Associer stratégies et activités, le 1er septembre 2026, en 2 h pour 4 h estimées.
-- **Avancement :** 45 éléments terminés sur 60 et 76 h estimées restantes.
-- **Validation :** six projets compilés, audit réussi, 373 tests automatisés réussis sans échec ni test ignoré, PR #51 fusionnée, CI de branche #158 et CI `master` #160 réussies, sauvegarde PostgreSQL vérifiée par `pg_restore` et deux empreintes SHA-256 identiques, workflow de production #25, Railway `ACTIVE`, base déjà à jour, `/health` `Healthy` et recette authentifiée des associations validée en production.
-- **Prochain ticket :** STR-007 — Supprimer une stratégie.
-- **Projection :** journée du 31 août clôturée à 10 h et journée du 1er septembre maintenue en cours après 5 h, 67 h disponibles jusqu’au 6 septembre, déficit projeté de 9 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
+- **Dernier ticket clôturé :** ACT-009 — Supprimer une activité, le 2 septembre 2026, en 2 h pour 2 h estimées.
+- **Avancement :** 47 éléments terminés sur 60 et 70 h estimées restantes.
+- **Validation :** six projets compilés, audit réussi, 389 tests automatisés réussis sans échec ni test ignoré, PR #53 fusionnée, CI de branche #166 et CI `master` #168 réussies, sauvegarde PostgreSQL vérifiée par `pg_restore` et deux empreintes SHA-256 identiques, workflow de production #27, Railway `0b7686cd` `ACTIVE`, base déjà à jour, `/health` `Healthy` et suppression authentifiée d’une activité avec conservation de la stratégie validée en production.
+- **Prochain ticket :** TEAM-008 — Supprimer définitivement une équipe.
+- **Projection :** journées du 31 août et du 1er septembre clôturées respectivement à 10 h et 8 h ; journée du 2 septembre en cours après 2 h ; 58 h disponibles jusqu’au 6 septembre, déficit projeté de 12 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -53,6 +53,8 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - affichage privé des miniatures et images optimisées, aperçu intégré et téléchargement WebP avec un nom compréhensible ;
 - association de plusieurs stratégies actives à une activité, conservation des associations historiques devenues inactives et refus côté serveur des identifiants étrangers, inactifs, vides ou répétés ;
 - cartes d’association avec miniature privée ou nom de carte de remplacement, affichées sur trois, deux puis une colonne selon la largeur.
+- suppression confirmée d’une stratégie active ou inactive avec comptage des associations, conservation des activités, nettoyage des fichiers privés et trace sensible ;
+- suppression confirmée d’une activité par le propriétaire, un Manager ou un Coach actif, avec suppression en cascade des participants, présences, détails de match, liens et associations, conservation des stratégies et trace `ACTIVITY_DELETED`.
 
 ## Prérequis locaux
 
