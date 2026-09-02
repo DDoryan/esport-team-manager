@@ -288,6 +288,26 @@ public sealed class UserTeamService : IUserTeamService
 
             try
             {
+                await _context.TeamActivities
+                    .Where(activity => activity.TeamId == request.TeamId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await _context.Strategies
+                    .Where(strategy => strategy.TeamId == request.TeamId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await _context.OwnershipTransfers
+                    .Where(transfer => transfer.TeamId == request.TeamId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await _context.Invitations
+                    .Where(invitation => invitation.TeamId == request.TeamId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await _context.TeamMemberships
+                    .Where(membership => membership.TeamId == request.TeamId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
                 DateTimeOffset utcNow = _timeProvider.GetUtcNow();
                 ActionTrace actionTrace = new(request.ActorUserId, null, TeamDeletedActionCode, nameof(Team), request.TeamId.ToString(), TraceOutcome.Succeeded, utcNow);
 

@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using EsportTeamManager.Application.Images;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace EsportTeamManager.Tests.Integration.Teams;
 
@@ -1938,6 +1940,64 @@ public sealed class UserTeamServiceTests
     }
 
     [Fact]
+    public async Task DeleteTeamAsync_WhenMembershipsHaveDependencies_DeletesDependenciesBeforeMemberships()
+    {
+        await using SqliteTestDatabase database = new();
+        await database.InitializeAsync();
+
+        DeletionCommandInterceptor commandInterceptor = new();
+
+        await using ServiceProvider serviceProvider = CreateServiceProvider(database.ConnectionString, commandInterceptor);
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+
+        UserManager<ApplicationUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        IUserTeamService teamService = scope.ServiceProvider.GetRequiredService<IUserTeamService>();
+        ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ApplicationUser owner = await CreateUserAsync(userManager, "owner@example.test", "Owner", "A01");
+
+        CreateTeamResult creationResult = await teamService.CreateAsync(new CreateTeamRequest(owner.Id, "Phoenix Academy", "PHX", "Europe/Paris"));
+
+        Assert.True(creationResult.Succeeded);
+        Assert.NotNull(creationResult.TeamId);
+
+        Guid teamId = creationResult.TeamId.Value;
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        TeamMembership ownerMembership = await context.TeamMemberships.SingleAsync(membership => membership.TeamId == teamId && membership.UserId == owner.Id);
+        ActivityType activityType = await context.ActivityTypes.SingleAsync(candidate => candidate.ActivityTypeId == 1);
+        TeamActivity activity = new(Guid.NewGuid(), teamId, activityType, ownerMembership.TeamMembershipId, nowUtc.AddDays(1), nowUtc.AddDays(1).AddHours(2), "Europe/Paris", [ownerMembership.TeamMembershipId], nowUtc, "Session collective");
+
+        context.TeamActivities.Add(activity);
+
+        await context.SaveChangesAsync();
+
+        context.ChangeTracker.Clear();
+        commandInterceptor.Clear();
+
+        DeleteTeamResult result = await teamService.DeleteTeamAsync(new DeleteTeamRequest(owner.Id, teamId, "Phoenix Academy"));
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+
+        int activitiesDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"Activities\"", StringComparison.Ordinal));
+        int strategiesDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"Strategies\"", StringComparison.Ordinal));
+        int transfersDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"OwnershipTransfers\"", StringComparison.Ordinal));
+        int invitationsDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"Invitations\"", StringComparison.Ordinal));
+        int membershipsDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"TeamMemberships\"", StringComparison.Ordinal));
+        int teamDeletionIndex = commandInterceptor.Commands.FindIndex(command => command.Contains("DELETE FROM \"Teams\"", StringComparison.Ordinal));
+
+        Assert.True(activitiesDeletionIndex >= 0);
+        Assert.True(strategiesDeletionIndex >= 0);
+        Assert.True(transfersDeletionIndex >= 0);
+        Assert.True(invitationsDeletionIndex >= 0);
+        Assert.True(membershipsDeletionIndex >= 0);
+        Assert.True(teamDeletionIndex >= 0);
+        Assert.True(activitiesDeletionIndex < membershipsDeletionIndex);
+        Assert.True(strategiesDeletionIndex < membershipsDeletionIndex);
+        Assert.True(transfersDeletionIndex < membershipsDeletionIndex);
+        Assert.True(invitationsDeletionIndex < membershipsDeletionIndex);
+        Assert.True(membershipsDeletionIndex < teamDeletionIndex);
+    }
+
+    [Fact]
     public async Task DeleteTeamAsync_WhenConfirmationNameDoesNotMatch_ReturnsFailureWithoutDeletingTeam()
     {
         await using SqliteTestDatabase database = new();
@@ -2000,12 +2060,20 @@ public sealed class UserTeamServiceTests
         Assert.False(await context.ActionTraces.AnyAsync(trace => trace.ActionCode == "TEAM_DELETED"));
     }
 
-    private static ServiceProvider CreateServiceProvider(string connectionString)
+    private static ServiceProvider CreateServiceProvider(string connectionString, DbCommandInterceptor? commandInterceptor = null)
     {
         ServiceCollection services = new();
 
         services.AddLogging();
-        services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
+        services.AddDbContext<ApplicationDbContext>(options =>
+        {
+            options.UseSqlite(connectionString);
+
+            if (commandInterceptor is not null)
+            {
+                options.AddInterceptors(commandInterceptor);
+            }
+        });
 
         services.AddIdentityCore<ApplicationUser>(options =>
         {
@@ -2019,6 +2087,30 @@ public sealed class UserTeamServiceTests
         services.AddScoped<IUserTeamService, UserTeamService>();
 
         return services.BuildServiceProvider();
+    }
+
+    private sealed class DeletionCommandInterceptor : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+
+        public void Clear()
+        {
+            Commands.Clear();
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     private sealed class StubPrivateImageService : IPrivateImageService
