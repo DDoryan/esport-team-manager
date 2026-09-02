@@ -5,6 +5,7 @@ using EsportTeamManager.Domain.Exceptions;
 using EsportTeamManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace EsportTeamManager.Infrastructure.Activities;
 
@@ -13,6 +14,7 @@ public sealed class ActivityEditingService : IActivityEditingService
     private const string ManagerRoleCode = "Manager";
     private const string CoachRoleCode = "Coach";
     private const string ActivityUpdatedActionCode = "ACTIVITY_UPDATED";
+    private const string ActivityDeletedActionCode = "ACTIVITY_DELETED";
 
     private readonly ApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
@@ -469,6 +471,84 @@ public sealed class ActivityEditingService : IActivityEditingService
         }
 
         return UpdateActivityResult.Success();
+    }
+
+    public async Task<DeleteActivityResult> DeleteAsync(DeleteActivityRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty || request.ActivityId == Guid.Empty)
+        {
+            return DeleteActivityResult.Failure(["L’activité est introuvable."]);
+        }
+
+        var access = await _context.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.UserId == request.ActorUserId && membership.TeamId == request.TeamId && membership.Status == MembershipStatus.Active)
+            .Join(_context.Teams, membership => membership.TeamId, team => team.TeamId, (membership, team) => new
+            {
+                Membership = membership,
+                Team = team
+            })
+            .Join(_context.TeamRoles, item => item.Membership.TeamRoleId, role => role.TeamRoleId, (item, role) => new
+            {
+                item.Team.OwnerUserId,
+                RoleCode = role.Code
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (access is null || access.OwnerUserId != request.ActorUserId && access.RoleCode != ManagerRoleCode && access.RoleCode != CoachRoleCode)
+        {
+            return DeleteActivityResult.Failure(["Vous n’êtes pas autorisé à supprimer cette activité."]);
+        }
+
+        TeamActivity? activity = await _context.TeamActivities
+            .SingleOrDefaultAsync(item => item.ActivityId == request.ActivityId && item.TeamId == request.TeamId, cancellationToken);
+
+        if (activity is null)
+        {
+            return DeleteActivityResult.Failure(["L’activité est introuvable."]);
+        }
+
+        int participantCount = await _context.ActivityParticipants
+            .AsNoTracking()
+            .CountAsync(participant => participant.ActivityId == request.ActivityId, cancellationToken);
+
+        int linkCount = await _context.ActivityLinks
+            .AsNoTracking()
+            .CountAsync(link => link.ActivityId == request.ActivityId, cancellationToken);
+
+        int strategyAssociationCount = await _context.ActivityStrategies
+            .AsNoTracking()
+            .CountAsync(association => association.ActivityId == request.ActivityId, cancellationToken);
+
+        DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+
+        await using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        _context.TeamActivities.Remove(activity);
+
+        ActionTrace actionTrace = new(request.ActorUserId, request.TeamId, ActivityDeletedActionCode, nameof(TeamActivity), activity.ActivityId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+        _context.ActionTraces.Add(actionTrace);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+
+            _logger.LogError(exception, "Activity deletion persistence failed for actor {ActorUserId}, team {TeamId} and activity {ActivityId}.", request.ActorUserId, request.TeamId, request.ActivityId);
+
+            return DeleteActivityResult.Failure(["L’activité n’a pas pu être supprimée. Veuillez réessayer."]);
+        }
+
+        return DeleteActivityResult.Success(participantCount, linkCount, strategyAssociationCount);
     }
 
     private async Task<string?> UpdateParticipantsAsync(TeamActivity activity, Guid teamId, IReadOnlyCollection<UpdateActivityParticipantRequest> requestedParticipants, ActivityStatus requestedStatus, DateTimeOffset plannedStartUtc, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken)

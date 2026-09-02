@@ -486,4 +486,19 @@ if (activityEditForm !== null && activityEditForm.dataset.canEdit === "true")
         event.preventDefault();
         event.returnValue = "";
     });
+
+    const deleteActivityFormElement = document.querySelector("[data-activity-delete-form]");
+
+    if (deleteActivityFormElement)
+    {
+        deleteActivityFormElement.addEventListener("submit", event =>
+        {
+            const confirmationMessage = deleteActivityFormElement.getAttribute("data-confirmation-message");
+
+            if (confirmationMessage && !window.confirm(confirmationMessage))
+            {
+                event.preventDefault();
+            }
+        });
+    }
 }

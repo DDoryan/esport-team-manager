@@ -5,6 +5,7 @@ using EsportTeamManager.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RepriseWeb.Controllers;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EsportTeamManager.Tests.Unit.Web;
 
@@ -131,22 +132,107 @@ public sealed class ActivitiesControllerTests
         Assert.Null(calendarService.LastFilter);
     }
 
-    private static ActivitiesController CreateController(StubActivityCalendarService calendarService, StubUserTeamService userTeamService, Guid userId)
+    [Fact]
+    public async Task Delete_WhenDeletionSucceeds_RedirectsToCalendarWithSuccessMessage()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid activityId = Guid.NewGuid();
+        StubActivityCalendarService calendarService = new();
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", true)
+        ]);
+        StubActivityEditingService activityEditingService = new()
+        {
+            DeleteResult = DeleteActivityResult.Success(2, 1, 1)
+        };
+        ActivitiesController controller = CreateController(calendarService, userTeamService, userId, activityEditingService);
+
+        IActionResult result = await controller.Delete(teamId, activityId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(ActivitiesController.Index), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues!["teamId"]);
+
+        DeleteActivityRequest request = Assert.IsType<DeleteActivityRequest>(activityEditingService.LastDeleteRequest);
+
+        Assert.Equal(userId, request.ActorUserId);
+        Assert.Equal(teamId, request.TeamId);
+        Assert.Equal(activityId, request.ActivityId);
+
+        string successMessage = Assert.IsType<string>(controller.TempData["SuccessMessage"]);
+
+        Assert.Contains("2 participants", successMessage);
+        Assert.Contains("1 lien", successMessage);
+        Assert.Contains("1 association de stratégie", successMessage);
+        Assert.Contains("Les stratégies ont été conservées.", successMessage);
+    }
+
+    [Fact]
+    public async Task Delete_WhenDeletionFails_RedirectsToEditWithErrorMessage()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid activityId = Guid.NewGuid();
+        StubActivityCalendarService calendarService = new();
+        StubUserTeamService userTeamService = new(
+        [
+            new UserTeamSummary(teamId, "Phoenix Academy", "PHX", "Europe/Paris", "Coach", true)
+        ]);
+        StubActivityEditingService activityEditingService = new()
+        {
+            DeleteResult = DeleteActivityResult.Failure(["La suppression a échoué."])
+        };
+        ActivitiesController controller = CreateController(calendarService, userTeamService, userId, activityEditingService);
+
+        IActionResult result = await controller.Delete(teamId, activityId, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(ActivitiesController.Edit), redirect.ActionName);
+        Assert.Equal(teamId, redirect.RouteValues!["teamId"]);
+        Assert.Equal(activityId, redirect.RouteValues["activityId"]);
+        Assert.Equal("La suppression a échoué.", controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task Delete_WhenUserDoesNotBelongToTeam_ReturnsForbidWithoutCallingService()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        Guid activityId = Guid.NewGuid();
+        StubActivityCalendarService calendarService = new();
+        StubUserTeamService userTeamService = new([]);
+        StubActivityEditingService activityEditingService = new();
+        ActivitiesController controller = CreateController(calendarService, userTeamService, userId, activityEditingService);
+
+        IActionResult result = await controller.Delete(teamId, activityId, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(activityEditingService.LastDeleteRequest);
+    }
+
+    private static ActivitiesController CreateController(StubActivityCalendarService calendarService, StubUserTeamService userTeamService, Guid userId, StubActivityEditingService? activityEditingService = null)
     {
         ClaimsIdentity identity = new(
         [
             new Claim(ClaimTypes.NameIdentifier, userId.ToString())
         ], "Test");
 
-        ActivitiesController controller = new(calendarService, null!, null!, userTeamService)
+        DefaultHttpContext httpContext = new()
+        {
+            User = new ClaimsPrincipal(identity)
+        };
+
+        ActivitiesController controller = new(calendarService, null!, activityEditingService ?? new StubActivityEditingService(), userTeamService)
         {
             ControllerContext = new ControllerContext
             {
-                HttpContext = new DefaultHttpContext
-                {
-                    User = new ClaimsPrincipal(identity)
-                }
-            }
+                HttpContext = httpContext
+            },
+            TempData = new TempDataDictionary(httpContext, new StubTempDataProvider())
         };
 
         return controller;
@@ -166,6 +252,42 @@ public sealed class ActivitiesControllerTests
             LastFilter = filter;
 
             return Task.FromResult<IReadOnlyCollection<CalendarActivitySummary>>([]);
+        }
+    }
+
+    private sealed class StubActivityEditingService : IActivityEditingService
+    {
+        public DeleteActivityResult DeleteResult { get; set; } = DeleteActivityResult.Success(0, 0, 0);
+
+        public DeleteActivityRequest? LastDeleteRequest { get; private set; }
+
+        public Task<ActivityEditDetails?> GetAsync(Guid userId, Guid teamId, Guid activityId, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<UpdateActivityResult> UpdateAsync(UpdateActivityRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<DeleteActivityResult> DeleteAsync(DeleteActivityRequest request, CancellationToken cancellationToken = default)
+        {
+            LastDeleteRequest = request;
+
+            return Task.FromResult(DeleteResult);
+        }
+    }
+
+    private sealed class StubTempDataProvider : ITempDataProvider
+    {
+        public IDictionary<string, object> LoadTempData(HttpContext context)
+        {
+            return new Dictionary<string, object>();
+        }
+
+        public void SaveTempData(HttpContext context, IDictionary<string, object> values)
+        {
         }
     }
 

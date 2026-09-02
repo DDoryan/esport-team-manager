@@ -9,6 +9,8 @@
     ViewData["HtmlClass"] = "activity-edit-fixed-page app-local-scroll-page";
     bool matchSectionIsVisible = Model.TypeCode is "Pracc" or "OfficialMatch";
 
+    string deletionConfirmationMessage = $"Supprimer définitivement l’activité « {activityTitle} » ?\n\nLes participants et leurs présences seront supprimés.\nLes liens et les éventuels détails de match seront supprimés.\nLes associations de stratégies seront supprimées, mais les stratégies resteront disponibles.";
+
     string resultLabel = Model.Result switch
     {
         MatchResult.Victory => "Victoire",
@@ -768,6 +770,15 @@
         </div>
 
         <div class="activity-edit-actions">
+            @if (Model.CanEdit)
+            {
+                <button class="btn btn-danger"
+                        type="submit"
+                        form="activity-delete-form">
+                    Supprimer définitivement
+                </button>
+            }
+
             <a class="btn btn-outline-secondary"
                asp-controller="Activities"
                asp-action="Index"
@@ -783,6 +794,19 @@
             }
         </div>
     </form>
+
+    @if (Model.CanEdit)
+    {
+        <form id="activity-delete-form"
+              asp-controller="Activities"
+              asp-action="Delete"
+              asp-route-teamId="@Model.TeamId"
+              asp-route-activityId="@Model.ActivityId"
+              method="post"
+              data-activity-delete-form="true"
+              data-confirmation-message="@deletionConfirmationMessage">
+        </form>
+    }
 </section>
 
 @section Styles
