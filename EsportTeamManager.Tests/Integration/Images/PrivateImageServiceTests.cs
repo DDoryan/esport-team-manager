@@ -484,6 +484,60 @@ public sealed class PrivateImageServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TeamImageDeletionStaging_CanRestoreOrPermanentlyDeleteTeamFiles()
+    {
+        Team team = await AddTeamAsync();
+        Strategy strategy = new(team.TeamId, Guid.NewGuid(), 1, "Exécution site A", StrategySide.Attack, "Description de la stratégie.", null, DateTimeOffset.UtcNow);
+
+        _context.Strategies.Add(strategy);
+        await _context.SaveChangesAsync();
+
+        byte[] logoBytes = await CreatePngAsync(900, 600);
+        byte[] strategyBytes = await CreatePngAsync(1600, 900);
+
+        await using MemoryStream logoContent = new(logoBytes);
+        await using MemoryStream strategyContent = new(strategyBytes);
+
+        StorePrivateImageResult logoResult = await _service.StoreTeamLogoAsync(new StorePrivateImageRequest(team.TeamId, "logo.png", logoContent));
+        StorePrivateImageResult strategyResult = await _service.StoreStrategyImageAsync(new StorePrivateImageRequest(strategy.StrategyId, "strategy.png", strategyContent));
+
+        Assert.True(logoResult.Succeeded);
+        Assert.True(strategyResult.Succeeded);
+
+        ImageFile logoImage = Assert.IsType<ImageFile>(logoResult.Image);
+        ImageFile strategyImage = Assert.IsType<ImageFile>(strategyResult.Image);
+        string logoOptimizedPath = GetPhysicalPath(logoImage.OptimizedStorageKey);
+        string logoThumbnailPath = GetPhysicalPath(logoImage.ThumbnailStorageKey);
+        string strategyOptimizedPath = GetPhysicalPath(strategyImage.OptimizedStorageKey);
+        string strategyThumbnailPath = GetPhysicalPath(strategyImage.ThumbnailStorageKey);
+
+        PrivateImageDeletionBatch firstBatch = await _service.StageTeamImageFilesForDeletionAsync(team.TeamId, [strategy.StrategyId]);
+
+        Assert.False(File.Exists(logoOptimizedPath));
+        Assert.False(File.Exists(logoThumbnailPath));
+        Assert.False(File.Exists(strategyOptimizedPath));
+        Assert.False(File.Exists(strategyThumbnailPath));
+
+        await _service.RestoreStagedTeamImageFilesAsync(firstBatch);
+
+        Assert.True(File.Exists(logoOptimizedPath));
+        Assert.True(File.Exists(logoThumbnailPath));
+        Assert.True(File.Exists(strategyOptimizedPath));
+        Assert.True(File.Exists(strategyThumbnailPath));
+        AssertTemporaryDirectoryIsEmpty();
+
+        PrivateImageDeletionBatch secondBatch = await _service.StageTeamImageFilesForDeletionAsync(team.TeamId, [strategy.StrategyId]);
+
+        await _service.CompleteStagedTeamImageDeletionAsync(secondBatch);
+
+        Assert.False(File.Exists(logoOptimizedPath));
+        Assert.False(File.Exists(logoThumbnailPath));
+        Assert.False(File.Exists(strategyOptimizedPath));
+        Assert.False(File.Exists(strategyThumbnailPath));
+        AssertTemporaryDirectoryIsEmpty();
+    }
+
+    [Fact]
     public async Task GetStrategyImageAsync_AndThumbnail_AllowOnlyActiveMemberOfStrategyTeam()
     {
         Team team = await AddTeamAsync();

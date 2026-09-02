@@ -695,6 +695,27 @@ public sealed class StrategiesControllerTests
         {
             throw new NotSupportedException();
         }
+
+        public Task<PrivateImageDeletionBatch> StageTeamImageFilesForDeletionAsync(Guid teamId, IReadOnlyCollection<Guid> strategyIds, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(new PrivateImageDeletionBatch(Guid.NewGuid(), teamId, strategyIds));
+        }
+
+        public Task RestoreStagedTeamImageFilesAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteStagedTeamImageDeletionAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubTempDataProvider : ITempDataProvider
@@ -803,6 +824,13 @@ public sealed class StrategiesControllerTests
         public Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+
+        public Task<DeleteTeamResult> DeleteTeamAsync(DeleteTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(DeleteTeamResult.Denied());
         }
     }
 

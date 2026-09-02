@@ -5009,3 +5009,46 @@ select.team-information-control option
         width: 100%;
     }
 }
+
+.team-ownership-card {
+    min-height: 31rem;
+}
+
+.team-ownership-card-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 31rem;
+    width: 100%;
+}
+
+.team-ownership-card-header {
+    min-height: 8.5rem;
+}
+
+.team-ownership-card-header h2 {
+    margin-bottom: 1rem !important;
+}
+
+.team-ownership-card-notice {
+    min-height: 5.75rem;
+}
+
+.team-ownership-card-field {
+    min-height: 6.5rem;
+}
+
+.team-ownership-card-actions {
+    margin-top: auto;
+    padding-top: 1.5rem;
+}
+
+@media (max-width: 991.98px) {
+    .team-ownership-card,
+    .team-ownership-card-layout,
+    .team-ownership-card-header,
+    .team-ownership-card-notice,
+    .team-ownership-card-field {
+        min-height: 0;
+    }
+}

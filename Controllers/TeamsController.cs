@@ -650,6 +650,65 @@ public sealed class TeamsController : Controller
         return RedirectToAction(nameof(Management), new { teamId, section = "ownership" });
     }
 
+    [HttpPost]
+    public async Task<IActionResult> DeleteTeam([Bind(Prefix = nameof(TeamManagementViewModel.DeleteTeamForm))] DeleteTeamViewModel model, CancellationToken cancellationToken)
+    {
+        Guid? userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return Challenge();
+        }
+
+        if (model.TeamId == Guid.Empty)
+        {
+            return RedirectToAction(nameof(Entry));
+        }
+
+        TeamManagementDetails? details = await _userTeamService.GetManagementDetailsAsync(userId.Value, model.TeamId, cancellationToken);
+
+        if (details is null || !details.CurrentUserIsOwner)
+        {
+            return Forbid();
+        }
+
+        DeleteTeamViewModel viewModel = BuildDeleteTeamViewModel(details, model);
+
+        if (!ModelState.IsValid)
+        {
+            ViewData["ActiveManagementSection"] = "ownership";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, deleteTeamForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
+        }
+
+        DeleteTeamRequest request = new(userId.Value, viewModel.TeamId, viewModel.ConfirmationName);
+        DeleteTeamResult result = await _userTeamService.DeleteTeamAsync(request, cancellationToken);
+
+        if (result.AccessDenied)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (string error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error);
+            }
+
+            ViewData["ActiveManagementSection"] = "ownership";
+            TeamManagementViewModel managementViewModel = BuildManagementViewModel(details, deleteTeamForm: viewModel);
+
+            return View(nameof(Management), managementViewModel);
+        }
+
+        LastVisitedTeamCookie.Delete(Response);
+        TempData["SuccessMessage"] = "L’équipe a été supprimée définitivement.";
+
+        return RedirectToAction(nameof(Entry));
+    }
+
     [HttpGet]
     public async Task<IActionResult> Invite(Guid teamId, CancellationToken cancellationToken)
     {
@@ -802,7 +861,7 @@ public sealed class TeamsController : Controller
         };
     }
 
-    private static TeamManagementViewModel BuildManagementViewModel(TeamManagementDetails details, InviteTeamMemberViewModel? invitationForm = null, TransferOwnershipViewModel? ownershipTransferForm = null, UpdateTeamInformationViewModel? informationForm = null)
+    private static TeamManagementViewModel BuildManagementViewModel(TeamManagementDetails details, InviteTeamMemberViewModel? invitationForm = null, TransferOwnershipViewModel? ownershipTransferForm = null, UpdateTeamInformationViewModel? informationForm = null, DeleteTeamViewModel? deleteTeamForm = null)
     {
         IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles =
         [
@@ -825,8 +884,19 @@ public sealed class TeamsController : Controller
         UpdateTeamInformationViewModel preparedInformationForm = BuildUpdateInformationViewModel(details, informationForm);
         InviteTeamMemberViewModel preparedInvitationForm = BuildInviteViewModel(details, invitationForm);
         TransferOwnershipViewModel preparedOwnershipTransferForm = BuildTransferOwnershipViewModel(details, ownershipTransferForm);
+        DeleteTeamViewModel preparedDeleteTeamForm = BuildDeleteTeamViewModel(details, deleteTeamForm);
 
-        return new TeamManagementViewModel(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members, pendingOwnershipTransfer, details.HasLogo, preparedInvitationForm, preparedOwnershipTransferForm, preparedInformationForm);
+        return new TeamManagementViewModel(details.TeamId, details.Name, details.Tag, details.Description, details.TimeZoneId, details.CurrentUserIsOwner, details.CurrentUserCanInviteMembers, details.CurrentUserCanLeaveTeam, availableRoles, members, pendingOwnershipTransfer, details.HasLogo, preparedInvitationForm, preparedOwnershipTransferForm, preparedInformationForm, preparedDeleteTeamForm);
+    }
+
+    private static DeleteTeamViewModel BuildDeleteTeamViewModel(TeamManagementDetails details, DeleteTeamViewModel? model = null)
+    {
+        DeleteTeamViewModel viewModel = model ?? new DeleteTeamViewModel();
+
+        viewModel.TeamId = details.TeamId;
+        viewModel.TeamName = details.Name;
+
+        return viewModel;
     }
 
     private static TransferOwnershipViewModel BuildTransferOwnershipViewModel(TeamManagementDetails details, TransferOwnershipViewModel? model = null)

@@ -535,6 +535,107 @@ public sealed class TeamsControllerTests
     }
 
     [Fact]
+    public async Task DeleteTeamPost_WhenRequestSucceeds_ForwardsRequestAndRedirectsToEntry()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, deleteTeamResult: DeleteTeamResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        DeleteTeamViewModel model = new()
+        {
+            TeamId = teamId,
+            ConfirmationName = " Phoenix Academy "
+        };
+
+        IActionResult result = await controller.DeleteTeam(model, CancellationToken.None);
+
+        RedirectToActionResult redirect = Assert.IsType<RedirectToActionResult>(result);
+
+        Assert.Equal(nameof(TeamsController.Entry), redirect.ActionName);
+        Assert.NotNull(service.LastDeleteTeamRequest);
+        Assert.Equal(userId, service.LastDeleteTeamRequest.ActorUserId);
+        Assert.Equal(teamId, service.LastDeleteTeamRequest.TeamId);
+        Assert.Equal(" Phoenix Academy ", service.LastDeleteTeamRequest.ConfirmationName);
+        Assert.Equal("L’équipe a été supprimée définitivement.", controller.TempData["SuccessMessage"]);
+    }
+
+    [Fact]
+    public async Task DeleteTeamPost_WhenCurrentUserIsNotOwner_ReturnsForbidWithoutDeletingTeam()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", false, true, [], []);
+        StubUserTeamService service = new([], details, deleteTeamResult: DeleteTeamResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        DeleteTeamViewModel model = new()
+        {
+            TeamId = teamId,
+            ConfirmationName = "Phoenix Academy"
+        };
+
+        IActionResult result = await controller.DeleteTeam(model, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Null(service.LastDeleteTeamRequest);
+    }
+
+    [Fact]
+    public async Task DeleteTeamPost_WhenModelIsInvalid_ReturnsOwnershipSectionWithoutDeletingTeam()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, deleteTeamResult: DeleteTeamResult.Success());
+        TeamsController controller = CreateController(service, userId);
+        DeleteTeamViewModel model = new()
+        {
+            TeamId = teamId
+        };
+        string fieldName = $"{nameof(TeamManagementViewModel.DeleteTeamForm)}.{nameof(DeleteTeamViewModel.ConfirmationName)}";
+
+        controller.ModelState.AddModelError(fieldName, "Le nom de l’équipe est obligatoire.");
+
+        IActionResult result = await controller.DeleteTeam(model, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.DeleteTeamForm);
+        Assert.Equal("Phoenix Academy", viewModel.DeleteTeamForm.TeamName);
+        Assert.Equal("ownership", controller.ViewData["ActiveManagementSection"]);
+        Assert.Null(service.LastDeleteTeamRequest);
+    }
+
+    [Fact]
+    public async Task DeleteTeamPost_WhenServiceReturnsFailure_ReturnsOwnershipSectionWithError()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid teamId = Guid.NewGuid();
+        string errorMessage = "Le nom saisi ne correspond pas au nom de l’équipe.";
+        TeamManagementDetails details = new(teamId, "Phoenix Academy", "PHX", null, "Europe/Paris", true, true, [], []);
+        StubUserTeamService service = new([], details, deleteTeamResult: DeleteTeamResult.Failure([errorMessage]));
+        TeamsController controller = CreateController(service, userId);
+        DeleteTeamViewModel model = new()
+        {
+            TeamId = teamId,
+            ConfirmationName = "Phoenix"
+        };
+
+        IActionResult result = await controller.DeleteTeam(model, CancellationToken.None);
+
+        ViewResult view = Assert.IsType<ViewResult>(result);
+        TeamManagementViewModel viewModel = Assert.IsType<TeamManagementViewModel>(view.Model);
+
+        Assert.Equal(nameof(TeamsController.Management), view.ViewName);
+        Assert.Same(model, viewModel.DeleteTeamForm);
+        Assert.Equal("ownership", controller.ViewData["ActiveManagementSection"]);
+        Assert.Equal(errorMessage, Assert.Single(controller.ModelState[string.Empty]!.Errors).ErrorMessage);
+        Assert.NotNull(service.LastDeleteTeamRequest);
+    }
+
+    [Fact]
     public async Task TransferOwnershipGet_WhenUserIsNotOwner_ReturnsForbid()
     {
         Guid userId = Guid.NewGuid();
@@ -833,6 +934,7 @@ public sealed class TeamsControllerTests
         private readonly OwnershipTransferActionResult _initiateOwnershipTransferResult;
         private readonly OwnershipTransferActionResult _cancelOwnershipTransferResult;
         private readonly UpdateTeamInformationResult _updateInformationResult;
+        private readonly DeleteTeamResult _deleteTeamResult;
 
         public InviteTeamMemberRequest? LastInviteRequest { get; private set; }
 
@@ -848,7 +950,9 @@ public sealed class TeamsControllerTests
 
         public UpdateTeamInformationRequest? LastUpdateInformationRequest { get; private set; }
 
-        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null, OwnershipTransferActionResult? initiateOwnershipTransferResult = null, OwnershipTransferActionResult? cancelOwnershipTransferResult = null, UpdateTeamInformationResult? updateInformationResult = null)
+        public DeleteTeamRequest? LastDeleteTeamRequest { get; private set; }
+
+        public StubUserTeamService(IReadOnlyCollection<UserTeamSummary> teams, TeamManagementDetails? managementDetails = null, InviteTeamMemberResult? inviteResult = null, TeamMembershipActionResult? changeMemberRoleResult = null, TeamMembershipActionResult? leaveTeamResult = null, TeamMembershipActionResult? removeMemberResult = null, OwnershipTransferActionResult? initiateOwnershipTransferResult = null, OwnershipTransferActionResult? cancelOwnershipTransferResult = null, UpdateTeamInformationResult? updateInformationResult = null, DeleteTeamResult? deleteTeamResult = null)
         {
             _teams = teams;
             _managementDetails = managementDetails;
@@ -859,6 +963,7 @@ public sealed class TeamsControllerTests
             _initiateOwnershipTransferResult = initiateOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
             _cancelOwnershipTransferResult = cancelOwnershipTransferResult ?? OwnershipTransferActionResult.Denied();
             _updateInformationResult = updateInformationResult ?? UpdateTeamInformationResult.Denied();
+            _deleteTeamResult = deleteTeamResult ?? DeleteTeamResult.Denied();
         }
 
         public Task<CreateTeamResult> CreateAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
@@ -956,6 +1061,15 @@ public sealed class TeamsControllerTests
 
             return Task.FromResult(_updateInformationResult);
         }
+
+        public Task<DeleteTeamResult> DeleteTeamAsync(DeleteTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            LastDeleteTeamRequest = request;
+
+            return Task.FromResult(_deleteTeamResult);
+        }
     }
 
     private sealed class StubPrivateImageService : IPrivateImageService
@@ -1013,6 +1127,27 @@ public sealed class TeamsControllerTests
         }
 
         public Task DeleteStrategyImageFilesAsync(Guid strategyId, string optimizedStorageKey, string thumbnailStorageKey, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task<PrivateImageDeletionBatch> StageTeamImageFilesForDeletionAsync(Guid teamId, IReadOnlyCollection<Guid> strategyIds, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(new PrivateImageDeletionBatch(Guid.NewGuid(), teamId, strategyIds));
+        }
+
+        public Task RestoreStagedTeamImageFilesAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteStagedTeamImageDeletionAsync(PrivateImageDeletionBatch batch, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

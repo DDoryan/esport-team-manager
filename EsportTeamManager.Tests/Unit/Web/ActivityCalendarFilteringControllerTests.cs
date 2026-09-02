@@ -237,5 +237,12 @@ public sealed class ActivityCalendarFilteringControllerTests
         {
             throw new NotSupportedException();
         }
+
+        public Task<DeleteTeamResult> DeleteTeamAsync(DeleteTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(DeleteTeamResult.Denied());
+        }
     }
 }

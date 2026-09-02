@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
 using EsportTeamManager.Infrastructure.Identity;
 using EsportTeamManager.Application.Images;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace EsportTeamManager.Infrastructure.Teams;
 
@@ -28,6 +29,7 @@ public sealed class UserTeamService : IUserTeamService
     private const string OwnershipTransferCancelledActionCode = "TEAM_OWNERSHIP_TRANSFER_CANCELLED";
     private const string OwnershipTransferRefusedActionCode = "TEAM_OWNERSHIP_TRANSFER_REFUSED";
     private const string TeamInformationUpdatedActionCode = "TEAM_INFORMATION_UPDATED";
+    private const string TeamDeletedActionCode = "TEAM_DELETED";
 
     private readonly ApplicationDbContext _context;
     private readonly ILookupNormalizer _lookupNormalizer;
@@ -243,6 +245,107 @@ public sealed class UserTeamService : IUserTeamService
         }
 
         return CreateTeamResult.Success(teamId);
+    }
+
+    public async Task<DeleteTeamResult> DeleteTeamAsync(DeleteTeamRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (request.ActorUserId == Guid.Empty || request.TeamId == Guid.Empty)
+        {
+            return DeleteTeamResult.Denied();
+        }
+
+        Team? team = await _context.Teams
+            .SingleOrDefaultAsync(candidate => candidate.TeamId == request.TeamId && candidate.OwnerUserId == request.ActorUserId, cancellationToken);
+
+        if (team is null)
+        {
+            return DeleteTeamResult.Denied();
+        }
+
+        string normalizedConfirmationName = request.ConfirmationName?.Trim() ?? string.Empty;
+
+        if (!string.Equals(team.Name, normalizedConfirmationName, StringComparison.OrdinalIgnoreCase))
+        {
+            return DeleteTeamResult.Failure(["Le nom saisi ne correspond pas au nom de l’équipe."]);
+        }
+
+        Guid[] strategyIds = await _context.Strategies
+            .AsNoTracking()
+            .Where(strategy => strategy.TeamId == request.TeamId)
+            .Select(strategy => strategy.StrategyId)
+            .ToArrayAsync(cancellationToken);
+
+        PrivateImageDeletionBatch? imageDeletionBatch = null;
+
+        try
+        {
+            imageDeletionBatch = await _privateImageService.StageTeamImageFilesForDeletionAsync(request.TeamId, strategyIds, cancellationToken);
+
+            await using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                DateTimeOffset utcNow = _timeProvider.GetUtcNow();
+                ActionTrace actionTrace = new(request.ActorUserId, null, TeamDeletedActionCode, nameof(Team), request.TeamId.ToString(), TraceOutcome.Succeeded, utcNow);
+
+                _context.ActionTraces.Add(actionTrace);
+                _context.Teams.Remove(team);
+
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(CancellationToken.None);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                throw;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (imageDeletionBatch is not null)
+            {
+                try
+                {
+                    await _privateImageService.RestoreStagedTeamImageFilesAsync(imageDeletionBatch, CancellationToken.None);
+                }
+                catch (Exception restoreException)
+                {
+                    _logger.LogCritical(restoreException, "Private image restoration failed after cancelled deletion of team {TeamId}.", request.TeamId);
+                }
+            }
+
+            _context.ChangeTracker.Clear();
+
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (imageDeletionBatch is not null)
+            {
+                try
+                {
+                    await _privateImageService.RestoreStagedTeamImageFilesAsync(imageDeletionBatch, CancellationToken.None);
+                }
+                catch (Exception restoreException)
+                {
+                    _logger.LogCritical(restoreException, "Private image restoration failed after deletion failure for team {TeamId}.", request.TeamId);
+                }
+            }
+
+            _context.ChangeTracker.Clear();
+
+            _logger.LogError(exception, "Team deletion failed for actor {ActorUserId} and team {TeamId}.", request.ActorUserId, request.TeamId);
+
+            return DeleteTeamResult.Failure(["La suppression de l’équipe n’a pas pu être finalisée. Veuillez réessayer."]);
+        }
+
+        await _privateImageService.CompleteStagedTeamImageDeletionAsync(imageDeletionBatch, CancellationToken.None);
+
+        return DeleteTeamResult.Success();
     }
 
     public async Task<UpdateTeamInformationResult> UpdateInformationAsync(UpdateTeamInformationRequest request, CancellationToken cancellationToken = default)

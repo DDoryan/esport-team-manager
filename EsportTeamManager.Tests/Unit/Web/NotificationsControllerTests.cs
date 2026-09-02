@@ -285,6 +285,13 @@ public sealed class NotificationsControllerTests
 
             return Task.FromResult(UpdateTeamInformationResult.Denied());
         }
+
+        public Task<DeleteTeamResult> DeleteTeamAsync(DeleteTeamRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(DeleteTeamResult.Denied());
+        }
     }
 
     private sealed class StubTempDataProvider : ITempDataProvider

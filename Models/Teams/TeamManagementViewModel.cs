@@ -32,7 +32,9 @@ public sealed class TeamManagementViewModel
 
     public TransferOwnershipViewModel OwnershipTransferForm { get; }
 
-    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, bool currentUserCanLeaveTeam, IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles, IReadOnlyCollection<TeamMemberViewModel> members, PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null, bool hasLogo = false, InviteTeamMemberViewModel? invitationForm = null, TransferOwnershipViewModel? ownershipTransferForm = null, UpdateTeamInformationViewModel? informationForm = null)
+    public DeleteTeamViewModel DeleteTeamForm { get; }
+
+    public TeamManagementViewModel(Guid teamId, string name, string? tag, string? description, string timeZoneId, bool currentUserIsOwner, bool currentUserCanInviteMembers, bool currentUserCanLeaveTeam, IReadOnlyCollection<TeamRoleOptionViewModel> availableRoles, IReadOnlyCollection<TeamMemberViewModel> members, PendingOwnershipTransferViewModel? pendingOwnershipTransfer = null, bool hasLogo = false, InviteTeamMemberViewModel? invitationForm = null, TransferOwnershipViewModel? ownershipTransferForm = null, UpdateTeamInformationViewModel? informationForm = null, DeleteTeamViewModel? deleteTeamForm = null)
     {
         TeamId = teamId;
         Name = name;
@@ -73,6 +75,11 @@ public sealed class TeamManagementViewModel
                     .Where(member => !member.IsOwner)
                     .Select(member => new OwnershipTransferRecipientOptionViewModel(member.TeamMembershipId, member.Pseudo, member.Tag, member.RoleLabel))
             ]
+        };
+        DeleteTeamForm = deleteTeamForm ?? new DeleteTeamViewModel
+        {
+            TeamId = teamId,
+            TeamName = name
         };
     }
 }
