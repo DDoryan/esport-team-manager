@@ -5,7 +5,19 @@ namespace RepriseWeb.Controllers
 {
     public class HomeController : Controller
     {
+        [HttpGet("/mentions-legales")]
+        public IActionResult LegalNotice()
+        {
+            return View();
+        }
 
+        [HttpGet("/conditions-generales-utilisation")]
+        public IActionResult TermsOfUse()
+        {
+            return View();
+        }
+
+        [HttpGet("/politique-confidentialite")]
         public IActionResult Privacy()
         {
             return View();

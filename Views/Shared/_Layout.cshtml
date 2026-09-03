@@ -2,6 +2,7 @@
     string? currentController = ViewContext.RouteData.Values["controller"]?.ToString();
     string? currentAction = ViewContext.RouteData.Values["action"]?.ToString();
     bool profileNavigationIsActive = string.Equals(currentController, "Account", StringComparison.OrdinalIgnoreCase) && (string.Equals(currentAction, "Profile", StringComparison.OrdinalIgnoreCase) || string.Equals(currentAction, "ChangePassword", StringComparison.OrdinalIgnoreCase));
+    string applicationVersion = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 }
 <!DOCTYPE html>
 <html lang="fr" data-bs-theme="dark" class="@ViewData["HtmlClass"]">
@@ -105,8 +106,19 @@
 
     <footer class="app-footer">
         <div class="container app-footer-content">
-            <span>&copy; 2026 Esport Team Manager</span>
-            <a asp-area="" asp-controller="Home" asp-action="Privacy">Confidentialité</a>
+            <div class="app-footer-primary">
+                <div class="app-footer-identity">
+                    <span>&copy; 2026 Esport Team Manager</span>
+                    <span class="app-version">v@(applicationVersion)</span>
+                </div>
+
+                <nav class="app-footer-links" aria-label="Informations légales">
+                    <a asp-area="" asp-controller="Home" asp-action="LegalNotice">Mentions légales</a>
+                    <a asp-area="" asp-controller="Home" asp-action="TermsOfUse">CGU</a>
+                    <a asp-area="" asp-controller="Home" asp-action="Privacy">Politique de confidentialité</a>
+                    <a href="mailto:doryan.coach@gmail.com">Envoyer un mail</a>
+                </nav>
+            </div>
         </div>
     </footer>
 

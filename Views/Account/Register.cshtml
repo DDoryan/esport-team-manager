@@ -95,11 +95,29 @@
                             <span asp-validation-for="MinimumAgeConfirmed" class="text-danger d-block"></span>
                         </div>
 
-                        <div class="form-check mb-3">
+                        <div class="form-check mb-2">
                             <input asp-for="TermsAccepted" class="form-check-input" />
-                            <label asp-for="TermsAccepted" class="form-check-label"></label>
+                            <label asp-for="TermsAccepted" class="form-check-label">
+                                J’accepte les conditions générales d’utilisation.
+                            </label>
                             <span asp-validation-for="TermsAccepted" class="text-danger d-block"></span>
                         </div>
+
+                        <p class="small text-body-secondary mb-3">
+                            <a asp-controller="Home"
+                               asp-action="TermsOfUse"
+                               target="_blank"
+                               rel="noopener">
+                                Lire les CGU<span class="visually-hidden"> dans un nouvel onglet</span>
+                            </a>
+                            <span aria-hidden="true"> · </span>
+                            <a asp-controller="Home"
+                               asp-action="Privacy"
+                               target="_blank"
+                               rel="noopener">
+                                Consulter la politique de confidentialité<span class="visually-hidden"> dans un nouvel onglet</span>
+                            </a>
+                        </p>
 
                         <p class="small text-body-secondary">
                             Aucune date de naissance n’est enregistrée. Seule la déclaration du respect de l’âge minimum est horodatée.
