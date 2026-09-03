@@ -5052,3 +5052,129 @@ select.team-information-control option
         min-height: 0;
     }
 }
+
+.legal-page
+{
+    width: min(100%, 64rem);
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.legal-page-header
+{
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.legal-page-kicker
+{
+    margin-bottom: 0.5rem;
+    color: var(--app-primary);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.legal-page-summary
+{
+    max-width: 48rem;
+    margin-bottom: 0;
+    color: var(--app-text-muted);
+}
+
+.legal-page-version
+{
+    margin-top: 1rem;
+    margin-bottom: 0;
+    color: var(--app-text-muted);
+    font-size: 0.9rem;
+}
+
+.legal-page-section
+{
+    margin-top: 2rem;
+}
+
+.legal-page-section h2
+{
+    margin-bottom: 1rem;
+    font-size: 1.35rem;
+}
+
+.legal-page-section h3
+{
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 1.1rem;
+}
+
+.legal-page-section p,
+.legal-page-section li
+{
+    line-height: 1.7;
+}
+
+.legal-page-section li + li
+{
+    margin-top: 0.5rem;
+}
+
+.legal-page a
+{
+    overflow-wrap: anywhere;
+}
+
+.legal-definition-list
+{
+    display: grid;
+    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+    gap: 0;
+    margin-bottom: 0;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.legal-definition-list dt,
+.legal-definition-list dd
+{
+    margin: 0;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.legal-definition-list dt
+{
+    background: var(--app-surface-elevated);
+}
+
+.legal-definition-list dd
+{
+    background: var(--app-surface);
+}
+
+.legal-definition-list dt:last-of-type,
+.legal-definition-list dd:last-of-type
+{
+    border-bottom: 0;
+}
+
+@media (max-width: 575.98px)
+{
+    .legal-definition-list
+    {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .legal-definition-list dt,
+    .legal-definition-list dd
+    {
+        border-bottom: 1px solid var(--app-border);
+    }
+
+    .legal-definition-list dd:last-of-type
+    {
+        border-bottom: 0;
+    }
+}
