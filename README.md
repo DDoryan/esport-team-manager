@@ -4,14 +4,14 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 
 ## État du projet
 
-- **Jalons atteints :** P0 terminé le 23 août 2026 ; premier jalon du socle Activités le 30 août 2026 ; socle Stratégies terminé le 1er septembre 2026 ; socle Activités complet, incluant ACT-009, publié le 2 septembre 2026.
-- **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, préversion `v0.2.0-socle-activites` sur `915cc1e`, release `v0.3.0-socle-strategies` sur `9d77db6`, puis release `v0.4.0-socle-activites-complet` sur `55be486`.
+- **Jalons atteints :** P0 terminé le 23 août 2026 ; premier jalon du socle Activités le 30 août 2026 ; socle Stratégies terminé le 1er septembre 2026 ; socle Activités complet puis socle Équipes complet publiés le 2 septembre 2026.
+- **Versions de référence :** préversion `v0.1.0-p0` sur `ab326f6`, préversion `v0.2.0-socle-activites` sur `915cc1e`, release `v0.3.0-socle-strategies` sur `9d77db6`, release `v0.4.0-socle-activites-complet` sur `55be486`, puis release `v0.5.0-socle-equipes-complet` sur `3c7ecb6`.
 - **Production :** <https://esport-team-manager-production.up.railway.app>
-- **Dernier ticket clôturé :** ACT-009 — Supprimer une activité, le 2 septembre 2026, en 2 h pour 2 h estimées.
-- **Avancement :** 47 éléments terminés sur 60 et 70 h estimées restantes.
-- **Validation :** six projets compilés, audit réussi, 389 tests automatisés réussis sans échec ni test ignoré, PR #53 fusionnée, CI de branche #166 et CI `master` #168 réussies, sauvegarde PostgreSQL vérifiée par `pg_restore` et deux empreintes SHA-256 identiques, workflow de production #27, Railway `0b7686cd` `ACTIVE`, base déjà à jour, `/health` `Healthy` et suppression authentifiée d’une activité avec conservation de la stratégie validée en production.
-- **Prochain ticket :** TEAM-008 — Supprimer définitivement une équipe.
-- **Projection :** journées du 31 août et du 1er septembre clôturées respectivement à 10 h et 8 h ; journée du 2 septembre en cours après 2 h ; 58 h disponibles jusqu’au 6 septembre, déficit projeté de 12 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
+- **Dernier ticket clôturé :** TEAM-008 — Supprimer définitivement une équipe, le 2 septembre 2026, en 6 h pour 6 h estimées, correction PostgreSQL comprise.
+- **Avancement :** 48 éléments terminés sur 60 et 64 h estimées restantes.
+- **Validation :** six projets compilés, audit réussi, 398 tests automatisés réussis sans échec ni test ignoré, PR #54 puis PR corrective #55 fusionnées, CI de branche #174 et CI `master` #176 réussies, sauvegarde PostgreSQL vérifiée par `pg_restore` et deux empreintes SHA-256 identiques, workflow de production #30 sur `3c7ecb6`, Railway `ACTIVE`, base déjà à jour, `/health` `Healthy` et suppression authentifiée d’une équipe complète validée en production avec conservation de Neon Academy et Phoenix Academy.
+- **Prochain ticket :** LEG-001 — Publier les pages légales et le contact.
+- **Projection :** journées du 31 août et du 1er septembre clôturées respectivement à 10 h et 8 h ; journée du 2 septembre en cours après 8 h ; 52 h disponibles jusqu’au 6 septembre, déficit projeté de 12 h et MVP complet toujours projeté au 9 septembre 2026, sans réduire QLT-004, QLT-005 ni la recette.
 
 ## Architecture
 
@@ -55,6 +55,7 @@ Application web de gestion d’équipes esport : comptes confirmés par courriel
 - cartes d’association avec miniature privée ou nom de carte de remplacement, affichées sur trois, deux puis une colonne selon la largeur.
 - suppression confirmée d’une stratégie active ou inactive avec comptage des associations, conservation des activités, nettoyage des fichiers privés et trace sensible ;
 - suppression confirmée d’une activité par le propriétaire, un Manager ou un Coach actif, avec suppression en cascade des participants, présences, détails de match, liens et associations, conservation des stratégies et trace `ACTIVITY_DELETED`.
+- suppression définitive d’une équipe réservée au propriétaire, avec confirmation normalisée, fichiers privés mis en attente, rollback restaurable, suppression PostgreSQL ordonnée du graphe complet et trace `TEAM_DELETED` détachée ; autres équipes et référentiels conservés.
 
 ## Prérequis locaux
 
